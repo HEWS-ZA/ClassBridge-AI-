@@ -1,0 +1,6 @@
+{
+  "name": "ClassBridge AI",
+  "description": "South African high school EdTech system providing Continuity Mode (AI substitute lessons) and Early-Warning Mode (AI-drafted parent messages based on student risk factors).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
