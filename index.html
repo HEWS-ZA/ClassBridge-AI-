@@ -3,11 +3,89 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <title>ClassBridge AI</title>
+    <meta name="description" content="South African high school EdTech system providing Continuity Mode (AI substitute lessons) and Early-Warning Mode (AI-drafted parent messages based on student risk factors)." />
+    <meta property="og:title" content="ClassBridge AI" />
+    <meta property="og:description" content="South African high school EdTech system providing Continuity Mode (AI substitute lessons) and Early-Warning Mode (AI-drafted parent messages based on student risk factors)." />
+    <script>
+      (function() {
+        // 1. Intercept and suppress external extension errors (such as chrome-extension:// requests.js fetch getter error)
+        function isIgnoredError(msg, src) {
+          var m = String(msg || '');
+          var s = String(src || '');
+          return (
+            (m.indexOf('fetch') !== -1 && m.indexOf('getter') !== -1) ||
+            s.indexOf('chrome-extension://') !== -1
+          );
+        }
+
+        window.addEventListener('error', function(e) {
+          if (isIgnoredError(e.message, e.filename)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e ? (e.reason && (e.reason.message || e.reason)) : '';
+          if (isIgnoredError(reason, '')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+
+        var prevOnError = window.onerror;
+        window.onerror = function(msg, url, line, col, error) {
+          if (isIgnoredError(msg, url) || (error && isIgnoredError(error.message, ''))) {
+            return true;
+          }
+          if (typeof prevOnError === 'function') {
+            return prevOnError.apply(this, arguments);
+          }
+        };
+
+        // 2. Ensure window.fetch has both a getter and a setter on window and Window.prototype
+        try {
+          var originalFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : window.fetch;
+          var activeFetch = originalFetch;
+
+          function getFetch() {
+            return activeFetch;
+          }
+          function setFetch(fn) {
+            activeFetch = fn;
+          }
+
+          try {
+            Object.defineProperty(window, 'fetch', {
+              get: getFetch,
+              set: setFetch,
+              configurable: true,
+              enumerable: true
+            });
+          } catch (e1) {
+            try {
+              window.fetch = activeFetch;
+            } catch (e2) {}
+          }
+
+          if (typeof Window !== 'undefined' && Window.prototype) {
+            try {
+              Object.defineProperty(Window.prototype, 'fetch', {
+                get: getFetch,
+                set: setFetch,
+                configurable: true,
+                enumerable: true
+              });
+            } catch (e3) {}
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

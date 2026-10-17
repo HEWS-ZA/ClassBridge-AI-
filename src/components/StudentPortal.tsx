@@ -373,7 +373,11 @@ export default function StudentPortal({
                           className="w-1 bg-sky-400 rounded-full transition-all duration-300"
                           style={{ 
                             height: isPlayingAudio ? `${Math.floor(Math.random() * 40) + 10}px` : '15px',
-                            animation: isPlayingAudio ? `wave 1s ease-in-out infinite alternate` : 'none',
+                            animationName: isPlayingAudio ? 'wave' : 'none',
+                            animationDuration: '1s',
+                            animationTimingFunction: 'ease-in-out',
+                            animationIterationCount: 'infinite',
+                            animationDirection: 'alternate',
                             animationDelay: `${i * 0.1}s`
                           }}
                         ></span>

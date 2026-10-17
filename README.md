@@ -77,6 +77,7 @@ Detailed engineering documentation is organized into dedicated topic specificati
 - **[SECURITY.md](./SECURITY.md):** South African POPIA compliance for learner data, server-side API key isolation, and prompt injection defense.
 - **[CODE_STYLE.md](./CODE_STYLE.md):** TypeScript standards, React functional architecture, naming conventions, and file organization.
 - **[TESTING.md](./TESTING.md):** Risk score unit tests, API integration verification, and manual QA checklists for all 4 portals.
+- **[SYSTEM_ANALYSIS_AND_ROADMAP.md](./SYSTEM_ANALYSIS_AND_ROADMAP.md):** In-depth system analysis, architectural evaluation, and prioritized engineering implementation roadmap.
 
 ---
 
