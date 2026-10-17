@@ -26,6 +26,10 @@ export interface Teacher {
   grade: string;
   status: 'Active' | 'Absent';
   absentSince?: string;
+  replacementTeacher?: string;
+  absentReason?: string;
+  phone?: string;
+  email?: string;
 }
 
 export interface Mark {
@@ -45,6 +49,7 @@ export interface Attendance {
   date: string;
   status: 'Present' | 'Absent';
   reason?: string;
+  period?: string;
 }
 
 export interface BehaviourLog {
@@ -54,6 +59,7 @@ export interface BehaviourLog {
   description: string;
   date: string;
   points: number; // positive or negative modifier
+  loggedBy?: string;
 }
 
 export interface LessonPlan {
@@ -63,6 +69,11 @@ export interface LessonPlan {
   topic: string;
   standardNotes: string;
   curriculumReference: string; // e.g. CAPS Section 3.2
+  teacherId?: string;
+  term?: number;
+  week?: number;
+  capsReference?: string;
+  objectives?: string[];
 }
 
 export interface LessonSlide {
@@ -107,3 +118,37 @@ export interface SchoolRules {
   stationeryList: string[];
   importantDates: { event: string; date: string }[];
 }
+
+export interface FeePayment {
+  id: string;
+  studentId: string;
+  cardholderName?: string;
+  parentName?: string;
+  feeTitle: string;
+  amount: number;
+  paymentDate?: string;
+  date?: string;
+  reference?: string;
+  status?: string;
+}
+
+export interface TutoringBooking {
+  id: string;
+  studentId: string;
+  messageId: string;
+  bookingDate?: string;
+  dateBooked?: string;
+  status: 'Confirmed' | 'Pending';
+  sessionTime?: string;
+}
+
+export interface TransitAlert {
+  id: string;
+  driverName: string;
+  route: string;
+  reason: string;
+  estimatedDelayMinutes: number;
+  timestamp: string;
+  createdAt?: string;
+}
+

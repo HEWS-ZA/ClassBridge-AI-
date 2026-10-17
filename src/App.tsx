@@ -17,7 +17,10 @@ import {
   Home,
   CheckCircle,
   Menu,
-  GraduationCap
+  GraduationCap,
+  Mail,
+  CreditCard,
+  Bell
 } from 'lucide-react';
 
 import { 
@@ -29,7 +32,10 @@ import {
   BehaviourLog, 
   GeneratedLesson, 
   Message, 
-  SchoolStats 
+  SchoolStats,
+  FeePayment,
+  TutoringBooking,
+  TransitAlert
 } from './types';
 
 import AdminPortal from './components/AdminPortal';
@@ -38,6 +44,14 @@ import ParentPortal from './components/ParentPortal';
 import DriverPortal from './components/DriverPortal';
 
 type PortalRole = 'admin' | 'student' | 'parent' | 'driver';
+
+interface RealtimeToast {
+  id: string;
+  type: 'transit' | 'teacher' | 'lesson' | 'warning' | 'mark' | 'payment' | 'general';
+  title: string;
+  message: string;
+  timestamp: string;
+}
 
 export default function App() {
   const [role, setRole] = useState<PortalRole>('admin');
@@ -50,12 +64,18 @@ export default function App() {
     behaviourLogs: BehaviourLog[];
     generatedLessons: GeneratedLesson[];
     messages: Message[];
+    feePayments?: FeePayment[];
+    tutoringBookings?: TutoringBooking[];
+    transitAlerts?: TransitAlert[];
     stats: SchoolStats;
   } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  // Real-time Toast Alert Notification
+  const [activeToast, setActiveToast] = useState<RealtimeToast | null>(null);
+
   // Pitch Assistant Guide steps
   const [showGuide, setShowGuide] = useState(true);
   const [guideStep, setGuideStep] = useState(0);
@@ -81,6 +101,137 @@ export default function App() {
 
   useEffect(() => {
     fetchState();
+
+    // Establish Server-Sent Events (SSE) stream for real-time instant push notifications
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+
+      const triggerToast = (toast: RealtimeToast) => {
+        setActiveToast(toast);
+        setTimeout(() => {
+          setActiveToast(curr => curr?.id === toast.id ? null : curr);
+        }, 7000);
+      };
+
+      eventSource.addEventListener('transit_delay', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          fetchState();
+          triggerToast({
+            id: `toast-${Date.now()}`,
+            type: 'transit',
+            title: `Transit Delay Alert • ${data.driverName}`,
+            message: `${data.reason} (${data.route}). Expected delay of ~${data.estimatedDelayMinutes} mins.`,
+            timestamp: data.timestamp || 'Just now'
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      eventSource.addEventListener('teacher_toggle', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          fetchState();
+          triggerToast({
+            id: `toast-${Date.now()}`,
+            type: 'teacher',
+            title: `Faculty Status Changed: ${data.name}`,
+            message: `Educator presence set to ${data.status} for ${data.subject} (${data.grade}).`,
+            timestamp: 'Just now'
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      eventSource.addEventListener('lesson_generated', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          fetchState();
+          triggerToast({
+            id: `toast-${Date.now()}`,
+            type: 'lesson',
+            title: 'AI Substitute Lesson Ready',
+            message: `Continuity lesson compiled: "${data.title}" for ${data.subject}.`,
+            timestamp: 'Just now'
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      eventSource.addEventListener('message_saved', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          fetchState();
+          triggerToast({
+            id: `toast-${Date.now()}`,
+            type: 'warning',
+            title: data.status === 'Sent' ? 'Official Advisory Dispatched' : 'Advisory Draft Saved',
+            message: `Parent advisory alert for ${data.studentName}: "${data.title}"`,
+            timestamp: 'Just now'
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      eventSource.addEventListener('fee_paid', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          fetchState();
+          triggerToast({
+            id: `toast-${Date.now()}`,
+            type: 'payment',
+            title: 'Levy Fee Payment Settled',
+            message: `R${data.amount} received from ${data.cardholder} for ${data.feeTitle}.`,
+            timestamp: 'Just now'
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      eventSource.addEventListener('tutoring_booked', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          fetchState();
+          triggerToast({
+            id: `toast-${Date.now()}`,
+            type: 'general',
+            title: 'Tutoring Remediation Confirmed',
+            message: `${data.studentName} enrolled into afternoon CAPS revision session.`,
+            timestamp: 'Just now'
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      eventSource.addEventListener('mark_added', () => {
+        fetchState();
+      });
+
+      eventSource.addEventListener('attendance_logged', () => {
+        fetchState();
+      });
+
+      eventSource.addEventListener('behaviour_logged', () => {
+        fetchState();
+      });
+
+      eventSource.addEventListener('state_reset', () => {
+        fetchState();
+      });
+    } catch (err) {
+      console.warn('Real-time SSE event source setup notice:', err);
+    }
+
+    return () => {
+      eventSource?.close();
+    };
   }, []);
 
   // API Call: Toggle Teacher Attendance
@@ -124,7 +275,7 @@ export default function App() {
       if (!res.ok) throw new Error('Failed to invoke diagnostic draft generator');
       const data = await res.json();
       await fetchState();
-      return data.message; // returns title & body
+      return data.message;
     } catch (err: any) {
       alert(err.message);
       return null;
@@ -202,16 +353,76 @@ export default function App() {
     }
   };
 
+  // API Call: Pay School Fee with persistent storage
+  const handlePayFee = async (studentId: string, feeTitle: string, amount: number, cardholderName: string) => {
+    try {
+      const res = await fetch('/api/fees/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, feeTitle, amount, cardholderName })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to process fee settlement');
+      }
+      await fetchState();
+      return true;
+    } catch (err: any) {
+      alert(err.message || 'Payment processing failed');
+      return false;
+    }
+  };
+
+  // API Call: Book Compulsory Tutoring with persistent storage
+  const handleBookTutoring = async (studentId: string, messageId: string) => {
+    try {
+      const res = await fetch('/api/tutoring/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, messageId })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to confirm remediation tutoring booking');
+      }
+      await fetchState();
+      return true;
+    } catch (err: any) {
+      alert(err.message || 'Tutoring booking failed');
+      return false;
+    }
+  };
+
+  // API Call: Broadcast Transit Delay (Scholar Transport Driver)
+  const handleNotifyDelay = async (driverName: string, route: string, reason: string, estimatedDelayMinutes: number) => {
+    try {
+      const res = await fetch('/api/driver/delay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driverName, route, reason, estimatedDelayMinutes })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to broadcast transit delay notice');
+      }
+      await fetchState();
+      return true;
+    } catch (err: any) {
+      alert(err.message || 'Transit delay broadcast failed');
+      return false;
+    }
+  };
+
   const pitchGuideSteps = [
     {
       title: "Step 1: Set Educator Absent (Continuity Mode)",
-      instruction: "Currently on the School / Admin Portal. Scroll to 'Faculty Attendance Status' on the left. Find 'Mrs. Thandi Ngubane' (Mathematics Grade 12) and toggle her status to 'Mark Absent'. Notice the absentee metric increment.",
+      instruction: "Currently on the School / Admin Portal. Scroll to 'Faculty Attendance Status' on the left. Find 'Mrs. Thandi Ngubane' (Mathematics Grade 12) and toggle her status to 'Mark Absent'. Notice the absentee metric increment in real-time.",
       actionLabel: "Next Step",
       onAction: () => setGuideStep(1)
     },
     {
       title: "Step 2: Generate AI Lesson Plan",
-      instruction: "Now on the right-hand panel, Mrs. Ngubane should be selected. Select 'Grade 12 Mathematics topic' (Calculus Limits & Derivatives) and click the glowing button: 'Compile AI Substitute Lesson Plan'. Gemini will assemble custom blackboard slides, transcripts, and voice walkthroughs live!",
+      instruction: "Now on the right-hand panel, Mrs. Ngubane should be selected. Select 'Grade 12 Mathematics topic' (Calculus Limits & Derivatives) and click the glowing button: 'Compile AI Substitute Lesson Plan'. Gemini will assemble custom blackboard slides, transcripts, and voice walkthroughs live into PostgreSQL!",
       actionLabel: "Verify on Student Portal",
       onAction: () => {
         setRole('student');
@@ -238,8 +449,8 @@ export default function App() {
       }
     },
     {
-      title: "Step 5: Coordinated Support & Enrollment",
-      instruction: "Welcome to the Parent Portal of Joyce Mokoena. Click the 'Inbox Alerts' tab. Open the academic alert. Read the personalized letter and click 'Confirm Enrollment' to enroll Thabo in afternoon tutoring (R0 fee) or pay school levies!",
+      title: "Step 5: Coordinated Support & WhatsApp Preview",
+      instruction: "Welcome to the Parent Portal of Joyce Mokoena. Click 'Inbox Alerts'. Use the new Format Switcher to toggle between the Formal School Letterhead and the authentic WhatsApp/SMS Chat Preview with double-blue delivery checkmarks!",
       actionLabel: "Finish Walkthrough",
       onAction: () => {
         setShowGuide(false);
@@ -255,7 +466,7 @@ export default function App() {
           <RefreshCw className="w-10 h-10 text-sky-400 animate-spin" />
           <div>
             <h1 className="font-serif italic text-white text-2xl">ClassBridge AI</h1>
-            <p className="text-slate-500 font-mono text-[11px] uppercase tracking-wider mt-2">Booting registers & CAPS resources...</p>
+            <p className="text-slate-500 font-mono text-[11px] uppercase tracking-wider mt-2">Connecting PostgreSQL & CAPS resources...</p>
           </div>
         </div>
       </div>
@@ -348,8 +559,12 @@ export default function App() {
               </button>
             </div>
 
-            {/* Quick Helper Button */}
-            <div>
+            {/* Real-time SSE indicator & Quick Helper Button */}
+            <div className="flex items-center gap-3">
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-mono text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Live SSE Sync</span>
+              </div>
               <button
                 onClick={() => setShowGuide(!showGuide)}
                 className="text-xs font-bold uppercase tracking-wide px-3 py-2 rounded-sm bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 transition flex items-center gap-1"
@@ -391,6 +606,45 @@ export default function App() {
         </div>
       </nav>
 
+      {/* Floating Real-Time SSE Toast Alert */}
+      {activeToast && (
+        <div className="fixed top-24 right-4 sm:right-8 z-50 max-w-md w-full animate-slide-up shadow-2xl rounded-sm border overflow-hidden bg-[#0c0e14] border-white/15">
+          <div className={`p-4 flex items-start gap-3 ${
+            activeToast.type === 'transit' ? 'bg-amber-500/10 border-l-4 border-amber-500' :
+            activeToast.type === 'teacher' ? 'bg-red-500/10 border-l-4 border-red-500' :
+            activeToast.type === 'lesson' ? 'bg-sky-500/10 border-l-4 border-sky-400' :
+            activeToast.type === 'payment' ? 'bg-emerald-500/10 border-l-4 border-emerald-400' :
+            'bg-slate-800/40 border-l-4 border-sky-500'
+          }`}>
+            <div className="shrink-0 mt-0.5">
+              {activeToast.type === 'transit' && <Bus className="w-5 h-5 text-amber-400 animate-pulse" />}
+              {activeToast.type === 'teacher' && <ShieldAlert className="w-5 h-5 text-red-400" />}
+              {activeToast.type === 'lesson' && <Sparkles className="w-5 h-5 text-sky-400" />}
+              {activeToast.type === 'warning' && <Mail className="w-5 h-5 text-sky-400" />}
+              {activeToast.type === 'payment' && <CheckCircle className="w-5 h-5 text-emerald-400" />}
+              {activeToast.type === 'general' && <CheckCircle className="w-5 h-5 text-sky-400" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-bold text-white uppercase font-mono tracking-wider truncate">
+                  {activeToast.title}
+                </h4>
+                <span className="text-[9px] font-mono text-slate-500 shrink-0">{activeToast.timestamp}</span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 leading-normal font-sans">
+                {activeToast.message}
+              </p>
+            </div>
+            <button 
+              onClick={() => setActiveToast(null)}
+              className="text-slate-500 hover:text-white text-xs px-1 hover:bg-white/5 rounded transition shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Container Portal */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full" id="portal-content-panel">
         {role === 'admin' && (
@@ -419,17 +673,20 @@ export default function App() {
           <ParentPortal
             state={state}
             onSaveMessage={handleSaveMessage}
+            onPayFee={handlePayFee}
+            onBookTutoring={handleBookTutoring}
           />
         )}
 
         {role === 'driver' && (
           <DriverPortal
             state={state}
+            onNotifyDelay={handleNotifyDelay}
           />
         )}
       </main>
 
-      {/* Floating Pitch Assistant Board (Hackathon Ready) */}
+      {/* Floating Pitch Assistant Board */}
       {showGuide && (
         <div className="fixed bottom-4 right-4 max-w-sm w-full bg-[#0c0e14] border border-white/15 text-slate-300 rounded shadow-2xl p-5 z-50 animate-slide-up" id="pitch-assistant-card">
           <div className="flex justify-between items-start pb-2 border-b border-white/5 mb-3">
@@ -476,8 +733,8 @@ export default function App() {
             <span className="text-green-400">28</span>
           </div>
           <div className="flex items-center justify-center sm:justify-start gap-2">
-            <span className="text-white/30">System Health:</span>
-            <span className="text-emerald-400">Optimal</span>
+            <span className="text-white/30">Persistence:</span>
+            <span className="text-emerald-400">PostgreSQL (Drizzle ORM)</span>
           </div>
         </div>
         <div className="text-white/20">ClassBridge AI • South African EdTech Track © 2026</div>

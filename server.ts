@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import express from 'express';
+import express, { Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -22,7 +23,10 @@ import {
   GeneratedLesson, 
   Message, 
   SchoolStats,
-  LessonSlide
+  FeePayment,
+  TutoringBooking,
+  SchoolRules,
+  TransitAlert
 } from './src/types';
 
 import { 
@@ -36,16 +40,149 @@ import {
   SEED_RULES
 } from './src/data/seedData';
 
-// Initialize state
-let students = JSON.parse(JSON.stringify(SEED_STUDENTS)) as Student[];
-let teachers = JSON.parse(JSON.stringify(SEED_TEACHERS)) as Teacher[];
-let lessonPlans = JSON.parse(JSON.stringify(SEED_LESSON_PLANS)) as LessonPlan[];
-let marks = JSON.parse(JSON.stringify(SEED_MARKS)) as Mark[];
-let attendanceLogs = JSON.parse(JSON.stringify(SEED_ATTENDANCE)) as Attendance[];
-let behaviourLogs = JSON.parse(JSON.stringify(SEED_BEHAVIOUR_LOGS)) as BehaviourLog[];
-let generatedLessons = [] as GeneratedLesson[];
-let messages = JSON.parse(JSON.stringify(SEED_MESSAGES)) as Message[];
-let schoolRules = JSON.parse(JSON.stringify(SEED_RULES));
+import { 
+  seedDatabaseIfEmpty, 
+  getFullSchoolState, 
+  updateTeacherStatus, 
+  saveMessage as saveMessageDb, 
+  addStudentMark, 
+  addAttendanceLog as addAttendanceDb, 
+  addBehaviourLog as addBehaviourDb, 
+  saveGeneratedLesson as saveGeneratedLessonDb, 
+  recordFeePayment, 
+  recordTutoringBooking, 
+  createTransitAlert 
+} from './src/db/operations.ts';
+
+// Persistent Local JSON Storage Configuration (as secondary cache / local fallback)
+const DATA_DIR = path.join(process.cwd(), 'data');
+const STORAGE_FILE = path.join(DATA_DIR, 'school_state.json');
+
+interface PersistedData {
+  students: Student[];
+  teachers: Teacher[];
+  lessonPlans: LessonPlan[];
+  marks: Mark[];
+  attendanceLogs: Attendance[];
+  behaviourLogs: BehaviourLog[];
+  generatedLessons: GeneratedLesson[];
+  messages: Message[];
+  schoolRules: SchoolRules;
+  feePayments: FeePayment[];
+  tutoringBookings: TutoringBooking[];
+  transitAlerts?: TransitAlert[];
+}
+
+function getDefaultState(): PersistedData {
+  return {
+    students: JSON.parse(JSON.stringify(SEED_STUDENTS)),
+    teachers: JSON.parse(JSON.stringify(SEED_TEACHERS)),
+    lessonPlans: JSON.parse(JSON.stringify(SEED_LESSON_PLANS)),
+    marks: JSON.parse(JSON.stringify(SEED_MARKS)),
+    attendanceLogs: JSON.parse(JSON.stringify(SEED_ATTENDANCE)),
+    behaviourLogs: JSON.parse(JSON.stringify(SEED_BEHAVIOUR_LOGS)),
+    generatedLessons: [],
+    messages: JSON.parse(JSON.stringify(SEED_MESSAGES)),
+    schoolRules: JSON.parse(JSON.stringify(SEED_RULES)),
+    feePayments: [],
+    tutoringBookings: [],
+    transitAlerts: []
+  };
+}
+
+function loadPersistedState(): PersistedData {
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const raw = fs.readFileSync(STORAGE_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.students) && Array.isArray(parsed.teachers)) {
+        return {
+          students: parsed.students,
+          teachers: parsed.teachers,
+          lessonPlans: Array.isArray(parsed.lessonPlans) ? parsed.lessonPlans : JSON.parse(JSON.stringify(SEED_LESSON_PLANS)),
+          marks: Array.isArray(parsed.marks) ? parsed.marks : JSON.parse(JSON.stringify(SEED_MARKS)),
+          attendanceLogs: Array.isArray(parsed.attendanceLogs) ? parsed.attendanceLogs : JSON.parse(JSON.stringify(SEED_ATTENDANCE)),
+          behaviourLogs: Array.isArray(parsed.behaviourLogs) ? parsed.behaviourLogs : JSON.parse(JSON.stringify(SEED_BEHAVIOUR_LOGS)),
+          generatedLessons: Array.isArray(parsed.generatedLessons) ? parsed.generatedLessons : [],
+          messages: Array.isArray(parsed.messages) ? parsed.messages : JSON.parse(JSON.stringify(SEED_MESSAGES)),
+          schoolRules: parsed.schoolRules || JSON.parse(JSON.stringify(SEED_RULES)),
+          feePayments: Array.isArray(parsed.feePayments) ? parsed.feePayments : [],
+          tutoringBookings: Array.isArray(parsed.tutoringBookings) ? parsed.tutoringBookings : [],
+          transitAlerts: Array.isArray(parsed.transitAlerts) ? parsed.transitAlerts : []
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Could not read existing state file, initializing from seed defaults:', err);
+  }
+
+  const def = getDefaultState();
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(def, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to initialize persistent state file:', err);
+  }
+  return def;
+}
+
+// Active in-memory cache synchronized with PostgreSQL
+const initialData = loadPersistedState();
+let students = initialData.students;
+let teachers = initialData.teachers;
+let lessonPlans = initialData.lessonPlans;
+let marks = initialData.marks;
+let attendanceLogs = initialData.attendanceLogs;
+let behaviourLogs = initialData.behaviourLogs;
+let generatedLessons = initialData.generatedLessons;
+let messages = initialData.messages;
+let schoolRules = initialData.schoolRules;
+let feePayments = initialData.feePayments;
+let tutoringBookings = initialData.tutoringBookings;
+let transitAlertsList: TransitAlert[] = initialData.transitAlerts || [];
+
+function savePersistedState() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const dataToSave: PersistedData = {
+      students,
+      teachers,
+      lessonPlans,
+      marks,
+      attendanceLogs,
+      behaviourLogs,
+      generatedLessons,
+      messages,
+      schoolRules,
+      feePayments,
+      tutoringBookings,
+      transitAlerts: transitAlertsList
+    };
+    const tmpFile = `${STORAGE_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, STORAGE_FILE);
+  } catch (err) {
+    console.error('Error saving persistent state to disk:', err);
+  }
+}
+
+// Server-Sent Events (SSE) Client Registry
+const sseClients = new Set<Response>();
+
+function broadcastSSE(eventType: string, data: any) {
+  const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients.forEach(client => {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
+  });
+}
 
 // Help lazy-load Gemini API Client
 let aiClient: GoogleGenAI | null = null;
@@ -79,7 +216,6 @@ function updateStudentRiskMetrics() {
       const sum = studentMarks.reduce((acc, m) => acc + m.markValue, 0);
       avgMark = Math.round(sum / studentMarks.length);
       
-      // Check for declining trend in tests sorted by date
       const sortedMaths = studentMarks
         .filter(m => m.subject === 'Mathematics')
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -94,7 +230,7 @@ function updateStudentRiskMetrics() {
 
     // 2. Calculate dynamic attendance percent
     const studentAtt = attendanceLogs.filter(a => a.studentId === student.id);
-    const baseDays = 20; // assumed base school days for seeding
+    const baseDays = 20;
     const basePresent = Math.round(baseDays * (student.id === 'stud-1' ? 0.78 : student.id === 'stud-4' ? 0.70 : student.id === 'stud-3' ? 0.92 : 0.98));
     
     const addedPresent = studentAtt.filter(a => a.status === 'Present').length;
@@ -113,7 +249,6 @@ function updateStudentRiskMetrics() {
     student.conductScore = Math.max(0, Math.min(120, conduct));
 
     // 4. Score risk metrics
-    // Marks metric: low marks or declining marks
     let marksRiskScore = 0;
     if (avgMark >= 80) marksRiskScore = 0;
     else if (avgMark >= 50) marksRiskScore = ((80 - avgMark) / 30) * 100;
@@ -123,23 +258,19 @@ function updateStudentRiskMetrics() {
       marksRiskScore = Math.min(100, marksRiskScore + 15);
     }
 
-    // Attendance metric: low attendance
     let attRiskScore = 0;
     if (student.attendancePercent >= 95) attRiskScore = 0;
     else if (student.attendancePercent >= 75) attRiskScore = ((95 - student.attendancePercent) / 20) * 100;
     else attRiskScore = 100;
 
-    // Behaviour metric: concerns
     let conductRiskScore = 0;
     if (student.conductScore >= 100) conductRiskScore = 0;
     else if (student.conductScore >= 60) conductRiskScore = ((100 - student.conductScore) / 40) * 100;
     else conductRiskScore = 100;
 
-    // Combined Risk Score: 40% marks, 30% attendance, 30% behaviour
     const riskScore = Math.round((marksRiskScore * 0.40) + (attRiskScore * 0.30) + (conductRiskScore * 0.30));
     student.riskScore = Math.max(0, Math.min(100, riskScore));
 
-    // Classify Level
     if (student.riskScore >= 70) {
       student.riskLevel = 'High';
     } else if (student.riskScore >= 40) {
@@ -154,15 +285,74 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
+  // Bootstrap PostgreSQL Database using Drizzle ORM
+  try {
+    await seedDatabaseIfEmpty();
+    const pgState = await getFullSchoolState();
+    if (pgState.students.length > 0) {
+      students = pgState.students;
+      teachers = pgState.teachers;
+      lessonPlans = pgState.lessonPlans;
+      generatedLessons = pgState.generatedLessons;
+      marks = pgState.marks;
+      attendanceLogs = pgState.attendanceLogs;
+      behaviourLogs = pgState.behaviourLogs;
+      messages = pgState.messages;
+      feePayments = pgState.feePayments;
+      tutoringBookings = pgState.tutoringBookings;
+      transitAlertsList = pgState.transitAlerts.map(ta => ({
+        id: ta.id,
+        driverName: ta.driverName,
+        route: ta.route,
+        reason: ta.reason,
+        estimatedDelayMinutes: ta.estimatedDelayMinutes,
+        timestamp: ta.timestamp
+      }));
+      updateStudentRiskMetrics();
+      savePersistedState();
+      console.log('ClassBridge AI synchronized with PostgreSQL database via Drizzle ORM.');
+    }
+  } catch (err) {
+    console.warn('Initial PostgreSQL synchronization notice (running with resilient local state fallback):', err);
+  }
+
+  // Server-Sent Events (SSE) Route for Real-time Notifications & Transit Alerts
+  app.get('/api/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    sseClients.add(res);
+
+    // Initial handshake
+    res.write(`event: connected\ndata: ${JSON.stringify({ status: 'connected', clients: sseClients.size })}\n\n`);
+
+    // Keepalive ping every 25 seconds
+    const interval = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch {
+        clearInterval(interval);
+        sseClients.delete(res);
+      }
+    }, 25000);
+
+    req.on('close', () => {
+      clearInterval(interval);
+      sseClients.delete(res);
+    });
+  });
+
   // GET State
   app.get('/api/state', (req, res) => {
     updateStudentRiskMetrics();
     
     // Calculate global stats
     const absentTeachersCount = teachers.filter(t => t.status === 'Absent').length;
-    updateStudentRiskMetrics();
     const atRiskStudentsCount = students.filter(s => s.riskLevel === 'High' || s.riskLevel === 'Medium').length;
-    const avgAttendance = Math.round(students.reduce((acc, s) => acc + s.attendancePercent, 0) / students.length);
+    const avgAttendance = Math.round(students.reduce((acc, s) => acc + s.attendancePercent, 0) / (students.length || 1));
 
     const stats: SchoolStats = {
       totalStudents: students.length,
@@ -182,100 +372,277 @@ async function startServer() {
       generatedLessons,
       messages,
       schoolRules,
+      feePayments,
+      tutoringBookings,
+      transitAlerts: transitAlertsList,
       stats
     });
   });
 
-  // RESET State
+  // RESET State to seed defaults
   app.post('/api/state/reset', (req, res) => {
-    students = JSON.parse(JSON.stringify(SEED_STUDENTS));
-    teachers = JSON.parse(JSON.stringify(SEED_TEACHERS));
-    lessonPlans = JSON.parse(JSON.stringify(SEED_LESSON_PLANS));
-    marks = JSON.parse(JSON.stringify(SEED_MARKS));
-    attendanceLogs = JSON.parse(JSON.stringify(SEED_ATTENDANCE));
-    behaviourLogs = JSON.parse(JSON.stringify(SEED_BEHAVIOUR_LOGS));
-    generatedLessons = [];
-    messages = JSON.parse(JSON.stringify(SEED_MESSAGES));
-    schoolRules = JSON.parse(JSON.stringify(SEED_RULES));
+    const def = getDefaultState();
+    students = def.students;
+    teachers = def.teachers;
+    lessonPlans = def.lessonPlans;
+    marks = def.marks;
+    attendanceLogs = def.attendanceLogs;
+    behaviourLogs = def.behaviourLogs;
+    generatedLessons = def.generatedLessons;
+    messages = def.messages;
+    schoolRules = def.schoolRules;
+    feePayments = def.feePayments;
+    tutoringBookings = def.tutoringBookings;
+    transitAlertsList = [];
+    updateStudentRiskMetrics();
+    savePersistedState();
+
+    broadcastSSE('state_reset', { message: 'School database reset to initial seeds' });
     res.json({ success: true, message: 'State successfully reset to seed defaults' });
   });
 
   // Toggle teacher attendance
-  app.post('/api/teachers/toggle', (req, res) => {
+  app.post('/api/teachers/toggle', async (req, res) => {
     const { teacherId, status } = req.body;
-    const teacher = teachers.find(t => t.id === teacherId);
-    if (!teacher) {
-      return res.status(404).json({ error: 'Teacher not found' });
+    if (!teacherId || typeof teacherId !== 'string') {
+      return res.status(400).json({ error: 'Valid teacherId is required.' });
     }
+    if (status !== 'Active' && status !== 'Absent') {
+      return res.status(400).json({ error: "Teacher status must be strictly 'Active' or 'Absent'." });
+    }
+    const teacher = teachers.find(t => t.id === teacherId.trim());
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher not found in faculty directory.' });
+    }
+
     teacher.status = status;
     teacher.absentSince = status === 'Absent' ? new Date().toLocaleDateString('en-ZA') : undefined;
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    updateTeacherStatus(teacher.id, status).catch(err => {
+      console.warn('PostgreSQL educator status sync notice:', err.message);
+    });
+
+    // Real-time broadcast
+    broadcastSSE('teacher_toggle', {
+      teacherId: teacher.id,
+      name: teacher.name,
+      status: teacher.status,
+      subject: teacher.subject,
+      grade: teacher.grade
+    });
+
     res.json({ success: true, teacher });
   });
 
-  // Add marks log
-  app.post('/api/logs/mark', (req, res) => {
+  // Add marks log with strict boundary sanitization (0 - 100)
+  app.post('/api/logs/mark', async (req, res) => {
     const { studentId, subject, testName, markValue, maxMark } = req.body;
+
+    if (!studentId || typeof studentId !== 'string') {
+      return res.status(400).json({ error: 'Valid studentId is required.' });
+    }
+    const student = students.find(s => s.id === studentId.trim());
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found in school records.' });
+    }
+
+    const cleanSubject = typeof subject === 'string' ? subject.trim().slice(0, 100) : '';
+    if (!cleanSubject) {
+      return res.status(400).json({ error: 'Assessment subject is required.' });
+    }
+
+    const cleanTestName = typeof testName === 'string' ? testName.trim().slice(0, 150) : '';
+    if (!cleanTestName) {
+      return res.status(400).json({ error: 'Assessment test name is required.' });
+    }
+
+    const parsedMax = Number(maxMark);
+    if (isNaN(parsedMax) || !isFinite(parsedMax) || parsedMax <= 0 || parsedMax > 100) {
+      return res.status(400).json({ error: 'Maximum mark must be a valid number between 1 and 100.' });
+    }
+
+    const parsedVal = Number(markValue);
+    if (isNaN(parsedVal) || !isFinite(parsedVal) || parsedVal < 0 || parsedVal > parsedMax) {
+      return res.status(400).json({ 
+        error: `Assessment mark must be a valid number between 0 and the maximum mark of ${parsedMax} (and within standard 0-100% threshold).` 
+      });
+    }
+
     const newMark: Mark = {
       id: `mark-${Date.now()}`,
-      studentId,
-      subject,
-      testName,
-      markValue: Number(markValue),
-      maxMark: Number(maxMark),
+      studentId: student.id,
+      subject: cleanSubject,
+      testName: cleanTestName,
+      markValue: Math.round(parsedVal * 10) / 10,
+      maxMark: Math.round(parsedMax),
       date: new Date().toISOString().split('T')[0],
       term: 2
     };
+
     marks.push(newMark);
     updateStudentRiskMetrics();
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    addStudentMark(student.id, cleanSubject, cleanTestName, newMark.markValue, newMark.maxMark).catch(err => {
+      console.warn('PostgreSQL assessment mark sync notice:', err.message);
+    });
+
+    // Real-time broadcast
+    broadcastSSE('mark_added', {
+      studentId: student.id,
+      studentName: student.name,
+      subject: cleanSubject,
+      markValue: newMark.markValue,
+      maxMark: newMark.maxMark,
+      riskScore: student.riskScore,
+      riskLevel: student.riskLevel
+    });
+
     res.json({ success: true, mark: newMark });
   });
 
-  // Add attendance log
-  app.post('/api/logs/attendance', (req, res) => {
+  // Add attendance log with boundary check and reason sanitization
+  app.post('/api/logs/attendance', async (req, res) => {
     const { studentId, status, reason } = req.body;
+
+    if (!studentId || typeof studentId !== 'string') {
+      return res.status(400).json({ error: 'Valid studentId is required.' });
+    }
+    const student = students.find(s => s.id === studentId.trim());
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found in school records.' });
+    }
+
+    if (status !== 'Present' && status !== 'Absent') {
+      return res.status(400).json({ error: "Attendance status must be strictly 'Present' or 'Absent'." });
+    }
+
+    let cleanReason: string | undefined = undefined;
+    if (typeof reason === 'string' && reason.trim()) {
+      cleanReason = reason
+        .trim()
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/[\x00-\x1F\x7F]/g, '')
+        .slice(0, 200);
+    }
+
     const newAtt: Attendance = {
       id: `att-${Date.now()}`,
-      studentId,
+      studentId: student.id,
       date: new Date().toISOString().split('T')[0],
       status,
-      reason: reason || undefined
+      reason: cleanReason
     };
+
     attendanceLogs.push(newAtt);
     updateStudentRiskMetrics();
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    addAttendanceDb(student.id, status, cleanReason).catch(err => {
+      console.warn('PostgreSQL attendance sync notice:', err.message);
+    });
+
+    // Real-time broadcast
+    broadcastSSE('attendance_logged', {
+      studentId: student.id,
+      studentName: student.name,
+      status,
+      attendancePercent: student.attendancePercent,
+      riskScore: student.riskScore
+    });
+
     res.json({ success: true, attendance: newAtt });
   });
 
-  // Add behaviour log
-  app.post('/api/logs/behaviour', (req, res) => {
+  // Add behaviour log with sanitization
+  app.post('/api/logs/behaviour', async (req, res) => {
     const { studentId, category, description, points } = req.body;
+
+    if (!studentId || typeof studentId !== 'string') {
+      return res.status(400).json({ error: 'Valid studentId is required.' });
+    }
+    const student = students.find(s => s.id === studentId.trim());
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found in school records.' });
+    }
+
+    if (category !== 'Positive' && category !== 'Concern') {
+      return res.status(400).json({ error: "Behaviour category must be strictly 'Positive' or 'Concern'." });
+    }
+
+    const cleanDesc = typeof description === 'string' 
+      ? description.trim().replace(/<[^>]*>?/gm, '').slice(0, 300) 
+      : '';
+    if (!cleanDesc) {
+      return res.status(400).json({ error: 'Behaviour description is required.' });
+    }
+
+    const parsedPoints = Number(points);
+    if (isNaN(parsedPoints) || !isFinite(parsedPoints)) {
+      return res.status(400).json({ error: 'Points modifier must be a valid numeric value.' });
+    }
+    const clampedPoints = Math.max(-100, Math.min(100, Math.round(parsedPoints)));
+
     const newLog: BehaviourLog = {
       id: `log-${Date.now()}`,
-      studentId,
+      studentId: student.id,
       category,
-      description,
+      description: cleanDesc,
       date: new Date().toISOString().split('T')[0],
-      points: Number(points)
+      points: clampedPoints
     };
+
     behaviourLogs.push(newLog);
     updateStudentRiskMetrics();
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    addBehaviourDb(student.id, category, cleanDesc, clampedPoints).catch(err => {
+      console.warn('PostgreSQL conduct log sync notice:', err.message);
+    });
+
+    // Real-time broadcast
+    broadcastSSE('behaviour_logged', {
+      studentId: student.id,
+      studentName: student.name,
+      category,
+      points: clampedPoints,
+      conductScore: student.conductScore
+    });
+
     res.json({ success: true, log: newLog });
   });
 
-  // Save draft message or send message
-  app.post('/api/messages/save', (req, res) => {
+  // Save draft message or send message with persistence
+  app.post('/api/messages/save', async (req, res) => {
     const { studentId, title, body, status } = req.body;
+
+    if (!studentId || typeof studentId !== 'string') {
+      return res.status(400).json({ error: 'Valid studentId is required.' });
+    }
+    const student = students.find(s => s.id === studentId.trim());
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found in school records.' });
+    }
+
+    const cleanTitle = typeof title === 'string' ? title.trim().slice(0, 200) : 'Advisory Alert';
+    const cleanBody = typeof body === 'string' ? body.trim().slice(0, 5000) : '';
+    const cleanStatus: 'Draft' | 'Sent' = status === 'Sent' ? 'Sent' : 'Draft';
     
-    // Check if there is already a draft for this student
-    const existingIdx = messages.findIndex(m => m.studentId === studentId && m.status === 'Draft');
+    const existingIdx = messages.findIndex(m => m.studentId === student.id && m.status === 'Draft');
     
     const messageData: Message = {
       id: existingIdx >= 0 ? messages[existingIdx].id : `msg-${Date.now()}`,
-      studentId,
-      title,
-      body,
-      status: status || 'Draft',
+      studentId: student.id,
+      title: cleanTitle,
+      body: cleanBody,
+      status: cleanStatus,
       dateDrafted: existingIdx >= 0 ? messages[existingIdx].dateDrafted : new Date().toISOString().split('T')[0],
-      dateSent: status === 'Sent' ? new Date().toISOString().split('T')[0] : undefined
+      dateSent: cleanStatus === 'Sent' ? new Date().toISOString().split('T')[0] : undefined
     };
 
     if (existingIdx >= 0) {
@@ -284,7 +651,156 @@ async function startServer() {
       messages.push(messageData);
     }
 
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    saveMessageDb(student.id, cleanTitle, cleanBody, cleanStatus).catch(err => {
+      console.warn('PostgreSQL message sync notice:', err.message);
+    });
+
+    // Real-time broadcast
+    broadcastSSE('message_saved', {
+      studentId: student.id,
+      studentName: student.name,
+      title: cleanTitle,
+      status: cleanStatus
+    });
+
     res.json({ success: true, message: messageData });
+  });
+
+  // Record parent fee payment with persistent storage
+  app.post('/api/fees/pay', async (req, res) => {
+    const { studentId, feeTitle, amount, cardholderName } = req.body;
+    if (!studentId || typeof studentId !== 'string') {
+      return res.status(400).json({ error: 'Valid studentId is required.' });
+    }
+    const student = students.find(s => s.id === studentId.trim());
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found in school records.' });
+    }
+
+    const parsedAmount = Number(amount);
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'Valid fee payment amount is required.' });
+    }
+
+    const cleanFeeTitle = typeof feeTitle === 'string' && feeTitle.trim() 
+      ? feeTitle.trim().slice(0, 150) 
+      : 'Phakamani High School Fee';
+    const cleanCardholder = typeof cardholderName === 'string' && cardholderName.trim()
+      ? cardholderName.trim().slice(0, 100)
+      : student.parentName;
+
+    const payment: FeePayment = {
+      id: `pay-${Date.now()}`,
+      studentId: student.id,
+      cardholderName: cleanCardholder,
+      parentName: cleanCardholder,
+      feeTitle: cleanFeeTitle,
+      amount: Math.round(parsedAmount * 100) / 100,
+      paymentDate: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0],
+      reference: `PHK-${Date.now().toString().slice(-6)}`,
+      status: 'Settled'
+    };
+
+    feePayments.push(payment);
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    recordFeePayment(student.id, cleanFeeTitle, payment.amount, cleanCardholder).catch(err => {
+      console.warn('PostgreSQL fee payment sync notice:', err.message);
+    });
+
+    // Real-time broadcast
+    broadcastSSE('fee_paid', {
+      studentId: student.id,
+      studentName: student.name,
+      feeTitle: cleanFeeTitle,
+      amount: payment.amount,
+      cardholder: cleanCardholder
+    });
+
+    res.json({ success: true, payment });
+  });
+
+  // Record compulsory tutoring booking with persistent storage
+  app.post('/api/tutoring/book', async (req, res) => {
+    const { studentId, messageId } = req.body;
+    if (!studentId || typeof studentId !== 'string') {
+      return res.status(400).json({ error: 'Valid studentId is required.' });
+    }
+    const student = students.find(s => s.id === studentId.trim());
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found in school records.' });
+    }
+
+    const cleanMsgId = typeof messageId === 'string' ? messageId.trim() : `msg-${Date.now()}`;
+    const booking: TutoringBooking = {
+      id: `book-${Date.now()}`,
+      studentId: student.id,
+      messageId: cleanMsgId,
+      bookingDate: new Date().toISOString().split('T')[0],
+      dateBooked: new Date().toISOString().split('T')[0],
+      status: 'Confirmed',
+      sessionTime: 'Monday - Thursday (14:30 - 15:30) • Room 14'
+    };
+
+    if (!tutoringBookings.some(b => b.studentId === student.id && b.messageId === cleanMsgId)) {
+      tutoringBookings.push(booking);
+      savePersistedState();
+
+      // Async sync to PostgreSQL via Drizzle ORM
+      recordTutoringBooking(student.id, cleanMsgId).catch(err => {
+        console.warn('PostgreSQL tutoring booking sync notice:', err.message);
+      });
+
+      // Real-time broadcast
+      broadcastSSE('tutoring_booked', {
+        studentId: student.id,
+        studentName: student.name,
+        messageId: cleanMsgId
+      });
+    }
+
+    res.json({ success: true, booking });
+  });
+
+  // Real-Time Transit Delay Notification (Transport Driver Terminal)
+  app.post('/api/driver/delay', async (req, res) => {
+    const { driverName, route, reason, estimatedDelayMinutes } = req.body;
+
+    const cleanDriver = typeof driverName === 'string' && driverName.trim() ? driverName.trim() : 'Baba Sipho';
+    const cleanRoute = typeof route === 'string' && route.trim() ? route.trim() : 'Soweto Route A • Phakamani High Bus #4';
+    const cleanReason = typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 200) : 'Traffic congestion on transit route';
+    const delayMins = Math.max(5, Math.min(120, Number(estimatedDelayMinutes) || 15));
+
+    const now = new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+    const alert: TransitAlert = {
+      id: `alert-${Date.now()}`,
+      driverName: cleanDriver,
+      route: cleanRoute,
+      reason: cleanReason,
+      estimatedDelayMinutes: delayMins,
+      timestamp: `${now} SAST`
+    };
+
+    transitAlertsList.unshift(alert);
+    if (transitAlertsList.length > 20) {
+      transitAlertsList.pop();
+    }
+    savePersistedState();
+
+    // Async sync to PostgreSQL via Drizzle ORM
+    createTransitAlert(cleanDriver, cleanRoute, cleanReason, delayMins).catch(err => {
+      console.warn('PostgreSQL transit alert sync notice:', err.message);
+    });
+
+    // Broadcast instantaneously to all portals (Admin, Student, Parent, Driver)
+    broadcastSSE('transit_delay', alert);
+
+    res.json({ success: true, alert });
   });
 
   // Continuity Mode: Generate substitute lesson via Gemini API
@@ -320,14 +836,14 @@ You must respond with a clean, parsed JSON object matching this schema:
     {
       "slideNumber": 1,
       "title": "Slide Title",
-      "bulletPoints": ["Bullet point 1 detailing concepts", "Bullet point 2 with formulas or examples"],
-      "visualDescription": "A concise instruction of what visual representation or diagrams should be displayed (e.g. 'A clean diagram of a plant chloroplast highlighting thylakoids in light green')"
+      "bulletPoints": ["Point 1", "Point 2", "Point 3"],
+      "visualDescription": "Actionable description of the diagram or chart displayed on blackboard/projector"
     }
   ],
-  "narratedWalkthrough": "An encouraging, narrative audio-narration script (approx 150 words) that walk the student through the slides sequentially."
+  "narratedWalkthrough": "A concise, engaging 150-word audio walkthrough summarizing the key conceptual mechanics that can be read aloud using text-to-speech."
 }
 
-Generate exactly 4 to 5 high-quality interactive slides. Ensure the response contains ONLY the valid JSON, with no markdown wrappers or text before/after.
+Ensure the response contains ONLY the valid JSON, with no markdown wrappers or text before/after.
 `;
 
     try {
@@ -337,8 +853,7 @@ Generate exactly 4 to 5 high-quality interactive slides. Ensure the response con
       let generatedData;
 
       if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-        // Run Gemini API
-        console.log(`Calling Gemini API for Lesson Generation on topic: ${plan.topic}`);
+        console.log(`Calling Gemini API for Lesson Plan: ${plan.topic}`);
         const response = await ai.models.generateContent({
           model: 'gemini-3.5-flash',
           contents: promptText,
@@ -348,7 +863,7 @@ Generate exactly 4 to 5 high-quality interactive slides. Ensure the response con
               type: Type.OBJECT,
               properties: {
                 title: { type: Type.STRING },
-                keyPoints: {
+                keyPoints: { 
                   type: Type.ARRAY,
                   items: { type: Type.STRING }
                 },
@@ -379,91 +894,92 @@ Generate exactly 4 to 5 high-quality interactive slides. Ensure the response con
         const jsonStr = response.text || '';
         generatedData = JSON.parse(jsonStr.trim());
       } else {
-        // Fallback simulated generation if API Key is not set, to ensure hackathon prototype robustness
-        console.log('Using simulated high-quality fallback generator (No API key set)');
-        await new Promise(resolve => setTimeout(resolve, 1500)); // simulate latency
+        console.log('Using simulated high-quality fallback lesson generator');
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         if (plan.topic.includes('Calculus')) {
           generatedData = {
-            title: "Calculus Mastery: Understanding Limits & First Principles",
+            title: "Calculus Limits & Differential Principles (CAPS Grade 12)",
             keyPoints: [
-              "A limit is the value that a function approaches as the input approaches some value.",
-              "Differentiation from first principles allows us to find the gradient of a curve at any point.",
-              "The power rule is a quick, proven shortcut derived directly from first principles."
+              "Definition of a derivative from first principles: f'(x) = lim h->0 [f(x+h) - f(x)] / h",
+              "Understanding average gradient versus instantaneous rate of change",
+              "Standard power rule differentiation: d/dx [a*x^n] = n*a*x^(n-1)",
+              "Examination tip: Watch out for negative and fractional exponents in NSC Papers"
             ],
-            script: "Good day, Grade 12s! Today we are looking at Calculus, which makes up a substantial portion of your CAPS Paper 1 final examinations. I know limits and first principles can look intimidating with all the algebra, but remember: it is just about looking at what happens as our interval 'h' gets infinitely close to zero. When we write f'(x) = lim [h -> 0] (f(x+h) - f(x))/h, we are simply finding the rise over run for a tiny, tiny gap. Let us practice expanding f(x+h) carefully and cancelling out the h. Keep your focus, grab your CASIO calculators, and let's work through this step-by-step. You've got this!",
+            script: "Good morning Grade 12s. While Mrs. Ngubane is indisposed today, our syllabus pace at Phakamani cannot falter, especially with Preliminary and Trial examinations around the corner. Today we explore Calculus limits. Remember, differential calculus is nothing more than calculating the exact speed of change at a singular instant. When evaluating limits from first principles, always maintain algebraic rigor—expand f(x+h) completely, group like terms, factorize h from the numerator, and only let h tend to zero in the final step. Let us inspect the slides and work through Example 1 in your CAPS study guides.",
             slides: [
               {
                 slideNumber: 1,
-                title: "Introduction to Calculus & Limits",
+                title: "Core Mechanics: First Principles Definition",
                 bulletPoints: [
-                  "Calculus is the mathematical study of continuous change.",
-                  "A limit describes the behavior of a function near a specific input value.",
-                  "Notation: lim [x -> c] f(x) = L means as x gets closer to c, f(x) gets closer to L."
+                  "Secant line joins points (x, f(x)) and (x+h, f(x+h))",
+                  "As h approaches zero, secant line rotates into the tangent line",
+                  "The limit gives the exact gradient at any point on the curve"
                 ],
-                visualDescription: "A Cartesian plane graph showing a curve y = f(x) with a point x approaching c, highlighted with green arrows on the x-axis."
+                visualDescription: "A Cartesian plane illustrating a parabola y = x^2 with two points connected by a dotted secant line converging toward a solid red tangent line as h -> 0."
               },
               {
                 slideNumber: 2,
-                title: "Differentiation from First Principles",
+                title: "Common Pitfalls & Algebraic Pitstops",
                 bulletPoints: [
-                  "Formula: f'(x) = lim [h -> 0] [f(x+h) - f(x)] / h",
-                  "Geometrically, this is the limit of the secant line gradient as h approaches 0.",
-                  "Always expand the numerator f(x+h) first, then factor out and divide by h."
+                  "Do NOT drop the 'lim h->0' symbol before substituting h = 0",
+                  "Watch bracket expansions: -(x+h)^2 = -(x^2 + 2xh + h^2)",
+                  "All non-h terms must cancel out before factorizing"
                 ],
-                visualDescription: "A curve with two points P(x, f(x)) and Q(x+h, f(x+h)) with a secant line connecting them that gradually rotates to become a tangent line at P."
+                visualDescription: "An algebraic breakdown highlighting canceled terms in green and common bracket distribution errors in highlighted red."
               },
               {
                 slideNumber: 3,
-                title: "Step-by-Step Example: f(x) = x^2",
+                title: "Quick Power Rule Shortcuts",
                 bulletPoints: [
-                  "Step 1: f(x+h) = (x+h)^2 = x^2 + 2xh + h^2",
-                  "Step 2: f(x+h) - f(x) = 2xh + h^2",
-                  "Step 3: Divide by h: (2xh + h^2)/h = 2x + h",
-                  "Step 4: Take limit h->0: f'(x) = 2x"
+                  "f(x) = k -> f'(x) = 0 (constant derivative is zero)",
+                  "f(x) = x^n -> f'(x) = n*x^(n-1)",
+                  "Always write surds as exponents before differentiating (e.g. sqrt(x) = x^(1/2))"
                 ],
-                visualDescription: "A clear algebraic expansion layout styled with chalk-board font, with cancellation lines on the x^2 terms."
+                visualDescription: "A side-by-side comparative table showing algebraic functions and their corresponding derivatives with highlighted exponent steps."
               },
               {
                 slideNumber: 4,
-                title: "The Shortcut: The Power Rule",
+                title: "Matric Exam Practice Problem",
                 bulletPoints: [
-                  "Rule: d/dx (x^n) = n * x^(n-1)",
-                  "This holds true for any real number exponent n.",
-                  "Example: For f(x) = x^3, f'(x) = 3x^2. For f(x) = 5x^2, f'(x) = 10x."
+                  "Determine f'(x) from first principles if f(x) = 3x^2 - 5x",
+                  "Step 1: Calculate and simplify f(x+h)",
+                  "Step 2: Subtract f(x) and divide by h",
+                  "Expected solution: f'(x) = 6x - 5"
                 ],
-                visualDescription: "A comparative table comparing First Principles vs. Power Rule derivations side-by-side, proving they yield identical results."
+                visualDescription: "Step-by-step whiteboard solution box with green checkmarks marking the awarding of marks as per NSC grading rubric."
               }
             ],
-            narratedWalkthrough: "Welcome to this AI-narrated walkthrough for Grade 12 Calculus. In the first slide, we define limits which are the foundational building block of calculus. In slide two, we inspect the formula for first principles—remember to show your working steps as this is worth five marks in your final paper! Slide three takes you through a concrete algebraic example using f(x) equals x squared, showing how the 'h' term beautifully cancels out. Finally, slide four introduces the power rule shortcut, which you should use to check your first principles answers!"
+            narratedWalkthrough: "Welcome learners. In this substitute session on Grade 12 Calculus, we focus on the foundation of differentiation: limits from first principles. When finding the gradient of a curve, we compute the limit as h approaches zero of f of x plus h minus f of x, all divided by h. Ensure you expand brackets carefully and factor out h before evaluating. Slide two highlights the common bracket sign errors that cost learners marks in the November trials. Work through the practice problem on slide four now."
           };
         } else {
           generatedData = {
-            title: `${plan.topic} - Substitute Lesson Session`,
+            title: `Curriculum Masterclass: ${plan.topic}`,
             keyPoints: [
-              "Understanding core biological and chemical structures is essential.",
-              "The CAPS curriculum emphasizes diagram labeling and experimental setups.",
-              "Continuous revisions are key to achieving your potential in tests."
+              `Core CAPS competencies for ${plan.subject} (${plan.grade})`,
+              "Methodological breakdown of foundational concepts and terminology",
+              "Standard exam question structuring and high-frequency traps",
+              "Applied summary and practical contextual applications"
             ],
-            script: `Good day, learners! Today Ms. Nomvula Sithole is away, but our learning does not stop. We are proceeding with our planned topic of ${plan.topic}. Let's take out our notebooks and pay close attention to this structured session. We will cover the main mechanisms, step through the interactive slides, and complete the short check-for-understanding exercises at the end. Stay focused!`,
+            script: `Greetings class. Today we proceed with our scheduled CAPS syllabus topic on ${plan.topic}. It is essential that we maintain continuity in our academic progress. Please open your class notebooks and follow the structured slide progression carefully.`,
             slides: [
               {
                 slideNumber: 1,
-                title: `Introduction to ${plan.topic}`,
+                title: "Topic Foundation & Definitions",
                 bulletPoints: [
-                  "This topic is core to the National Senior Certificate CAPS curriculum.",
-                  "Key terminologies must be memorized and spelled correctly.",
-                  "Practical assignments frequently test this section."
+                  "Curriculum context: " + (plan.capsReference || plan.curriculumReference),
+                  "Core definitions and initial conceptual framework",
+                  "Why this topic forms a cornerstone of your final assessment"
                 ],
-                visualDescription: "A clean, high-contrast illustration representing the core topic elements labeled with CAPS terminology."
+                visualDescription: "A structured conceptual diagram illustrating key terminology and their interrelations on a clean blackboard layout."
               },
               {
                 slideNumber: 2,
-                title: "Core Mechanics and Theories",
+                title: "Deep Dive: Mechanics & Applications",
                 bulletPoints: [
-                  "First phase requires energy input or active transport.",
-                  "Second phase releases primary outputs and biological products.",
-                  "Environmental conditions (temperature, pressure, pH) act as limiting factors."
+                  "Step-by-step process flow and governing principles",
+                  "Case studies and real-world South African applications",
+                  "Key formulas, equations, or analytical frameworks"
                 ],
                 visualDescription: "A conceptual flow diagram showing inputs entering a box labeled 'Core Processes' and outputs exiting in highlighted colors."
               }
@@ -486,6 +1002,22 @@ Generate exactly 4 to 5 high-quality interactive slides. Ensure the response con
       };
 
       generatedLessons.push(newLesson);
+      savePersistedState();
+
+      // Async sync to PostgreSQL via Drizzle ORM
+      saveGeneratedLessonDb(newLesson).catch(err => {
+        console.warn('PostgreSQL generated lesson sync notice:', err.message);
+      });
+
+      // Real-time broadcast
+      broadcastSSE('lesson_generated', {
+        lessonId: newLesson.id,
+        title: newLesson.title,
+        teacherName: teacher.name,
+        subject: teacher.subject,
+        grade: teacher.grade
+      });
+
       res.json({ success: true, lesson: newLesson });
 
     } catch (err: any) {
@@ -507,7 +1039,6 @@ Generate exactly 4 to 5 high-quality interactive slides. Ensure the response con
       return res.status(404).json({ error: 'Student not found' });
     }
 
-    // Gather specific details to feed the AI
     const studentMarks = marks.filter(m => m.studentId === student.id);
     const studentAtt = attendanceLogs.filter(a => a.studentId === student.id && a.status === 'Absent');
     const studentLogs = behaviourLogs.filter(b => b.studentId === student.id && b.category === 'Concern');
@@ -578,9 +1109,8 @@ Ensure the response contains ONLY the valid JSON, with no markdown wrappers or t
         const jsonStr = response.text || '';
         generatedData = JSON.parse(jsonStr.trim());
       } else {
-        // Fallback simulation
         console.log('Using simulated high-quality fallback warning generator');
-        await new Promise(resolve => setTimeout(resolve, 1200)); // simulate latency
+        await new Promise(resolve => setTimeout(resolve, 1200));
         
         generatedData = {
           title: `Supportive Academic & Attendance Review: ${student.name} (${student.grade})`,
@@ -588,7 +1118,6 @@ Ensure the response contains ONLY the valid JSON, with no markdown wrappers or t
         };
       }
 
-      // Automatically save as Draft in our state
       const existingIdx = messages.findIndex(m => m.studentId === student.id && m.status === 'Draft');
       const messageData: Message = {
         id: existingIdx >= 0 ? messages[existingIdx].id : `msg-${Date.now()}`,
@@ -604,6 +1133,20 @@ Ensure the response contains ONLY the valid JSON, with no markdown wrappers or t
       } else {
         messages.push(messageData);
       }
+
+      savePersistedState();
+
+      // Async sync to PostgreSQL via Drizzle ORM
+      saveMessageDb(student.id, generatedData.title, generatedData.body, 'Draft').catch(err => {
+        console.warn('PostgreSQL warning draft sync notice:', err.message);
+      });
+
+      // Real-time broadcast
+      broadcastSSE('warning_drafted', {
+        studentId: student.id,
+        studentName: student.name,
+        title: generatedData.title
+      });
 
       res.json({ success: true, message: messageData });
 

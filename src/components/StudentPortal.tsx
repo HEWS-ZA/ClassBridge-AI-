@@ -54,31 +54,121 @@ export default function StudentPortal({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [selectedQuizAnswers, setSelectedQuizAnswers] = useState<Record<number, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
 
-  // Audio simulation timer
-  React.useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (isPlayingAudio) {
-      timer = setInterval(() => {
-        setAudioProgress(prev => {
-          if (prev >= 100) {
-            setIsPlayingAudio(false);
-            return 100;
-          }
-          return prev + 2.5; // step simulation
-        });
-      }, 1000);
+  // Stop audio and cancel any active Web Speech synthesis safely
+  const stopAudioNarration = () => {
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    } catch (e) {
+      console.warn('Speech cancellation error:', e);
     }
-    return () => clearInterval(timer);
-  }, [isPlayingAudio]);
+    setIsPlayingAudio(false);
+  };
+
+  // Safe Web Speech Synthesis initiation wrapped in strict try/catch
+  const startAudioNarration = () => {
+    setAudioError(null);
+
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+      setAudioError("Web Speech audio is not supported in this browser. You can read the complete lecture script directly in the teleprompter transcript below.");
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    if (!activeLesson?.narratedWalkthrough) {
+      setAudioError("No narrated walkthrough script is available for this substitute lesson.");
+      return;
+    }
+
+    try {
+      // Cancel previous speech instance to prevent overlapping
+      window.speechSynthesis.cancel();
+
+      const textToSpeak = activeLesson.narratedWalkthrough;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+
+      // Select South African English or preferred English voice if present
+      try {
+        const voices = window.speechSynthesis.getVoices();
+        const zaVoice = voices.find(v => v.lang.includes('en-ZA')) || 
+                        voices.find(v => v.lang.includes('en-GB')) || 
+                        voices.find(v => v.lang.includes('en'));
+        if (zaVoice) {
+          utterance.voice = zaVoice;
+        }
+      } catch (voiceErr) {
+        // Voice selection failure is non-fatal
+      }
+
+      utterance.onstart = () => {
+        setIsPlayingAudio(true);
+        setAudioError(null);
+        setAudioProgress(0);
+      };
+
+      utterance.onend = () => {
+        setIsPlayingAudio(false);
+        setAudioProgress(100);
+      };
+
+      utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
+        console.warn('Web Speech synthesis error event:', event.error);
+        if (event.error === 'not-allowed') {
+          setAudioError("Audio narration was blocked by your browser's autoplay or permissions policy. Click 'Play Walkthrough' to start, or follow the transcript below.");
+        } else if (event.error === 'canceled' || event.error === 'interrupted') {
+          // Expected when slide switches or user pauses
+        } else {
+          setAudioError(`Audio playback encountered an issue (${event.error || 'playback blocked'}). The lecture script and slide notes remain accessible below.`);
+        }
+        setIsPlayingAudio(false);
+      };
+
+      utterance.onboundary = (event) => {
+        if (textToSpeak.length > 0) {
+          const charIndex = event.charIndex || 0;
+          const prog = Math.min(100, Math.round((charIndex / textToSpeak.length) * 100));
+          setAudioProgress(prog);
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+      setIsPlayingAudio(true);
+
+    } catch (err: any) {
+      console.error('Speech synthesis initiation failed:', err);
+      setAudioError("Audio narration could not start due to a browser restriction. You can read the complete teleprompter script below.");
+      setIsPlayingAudio(false);
+    }
+  };
+
+  const toggleAudioNarration = () => {
+    if (isPlayingAudio) {
+      stopAudioNarration();
+    } else {
+      startAudioNarration();
+    }
+  };
+
+  // Cleanup speech synthesis on component unmount
+  React.useEffect(() => {
+    return () => {
+      stopAudioNarration();
+    };
+  }, []);
 
   const startLesson = (lesson: GeneratedLesson) => {
+    stopAudioNarration();
     setActiveLesson(lesson);
     setCurrentSlideIndex(0);
-    setIsPlayingAudio(false);
     setAudioProgress(0);
+    setAudioError(null);
     setSelectedQuizAnswers({});
     setQuizSubmitted(false);
   };
@@ -86,18 +176,19 @@ export default function StudentPortal({
   const handleNextSlide = () => {
     if (!activeLesson) return;
     if (currentSlideIndex < activeLesson.slides.length - 1) {
+      stopAudioNarration();
       setCurrentSlideIndex(prev => prev + 1);
-      // Reset simulated audio playback per slide
-      setIsPlayingAudio(false);
       setAudioProgress(0);
+      setAudioError(null);
     }
   };
 
   const handlePrevSlide = () => {
     if (currentSlideIndex > 0) {
+      stopAudioNarration();
       setCurrentSlideIndex(prev => prev - 1);
-      setIsPlayingAudio(false);
       setAudioProgress(0);
+      setAudioError(null);
     }
   };
 
@@ -384,12 +475,40 @@ export default function StudentPortal({
                       ))}
                     </div>
 
+                    {/* Fallback Notice if Web Speech fails or is blocked */}
+                    {audioError && (
+                      <div className="bg-amber-500/10 border border-amber-500/25 p-3 rounded-sm text-xs text-amber-300 space-y-2 animate-fade-in">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-amber-200 text-[11px] font-mono uppercase tracking-wider">Audio Narration Notice</p>
+                            <p className="text-[10px] leading-relaxed text-slate-300 font-sans">{audioError}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1 border-t border-amber-500/15">
+                          <button
+                            onClick={startAudioNarration}
+                            className="bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 text-[9px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded-sm transition cursor-pointer"
+                          >
+                            Retry Audio
+                          </button>
+                          <button
+                            onClick={() => setAudioError(null)}
+                            className="text-slate-400 hover:text-white text-[9px] font-mono px-2 py-1 transition cursor-pointer"
+                          >
+                            Read Transcript
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Play buttons */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <button
-                          onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                          className="bg-sky-500 hover:bg-sky-400 text-black font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-sm flex items-center gap-2 shadow-lg shadow-sky-500/10 transition"
+                          onClick={toggleAudioNarration}
+                          className="bg-sky-500 hover:bg-sky-400 text-black font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-sm flex items-center gap-2 shadow-lg shadow-sky-500/10 transition cursor-pointer"
+                          id="btn-toggle-walkthrough"
                         >
                           {isPlayingAudio ? (
                             <>

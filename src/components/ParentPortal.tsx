@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Heart, 
   Mail, 
@@ -19,9 +19,21 @@ import {
   DollarSign, 
   Calendar,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  MessageCircle,
+  Smartphone,
+  Phone,
+  Video,
+  MoreVertical,
+  Smile,
+  Paperclip,
+  Send,
+  Bus,
+  Clock,
+  ShieldCheck,
+  CheckCheck
 } from 'lucide-react';
-import { Student, Teacher, Mark, Attendance, BehaviourLog, Message } from '../types';
+import { Student, Teacher, Mark, Attendance, BehaviourLog, Message, FeePayment, TutoringBooking, TransitAlert } from '../types';
 
 interface ParentPortalProps {
   state: {
@@ -31,13 +43,20 @@ interface ParentPortalProps {
     attendanceLogs: Attendance[];
     behaviourLogs: BehaviourLog[];
     messages: Message[];
+    feePayments?: FeePayment[];
+    tutoringBookings?: TutoringBooking[];
+    transitAlerts?: TransitAlert[];
   };
   onSaveMessage: (studentId: string, title: string, body: string, status: 'Draft' | 'Sent') => Promise<void>;
+  onPayFee?: (studentId: string, feeTitle: string, amount: number, cardholderName: string) => Promise<boolean>;
+  onBookTutoring?: (studentId: string, messageId: string) => Promise<boolean>;
 }
 
 export default function ParentPortal({
   state,
-  onSaveMessage
+  onSaveMessage,
+  onPayFee,
+  onBookTutoring
 }: ParentPortalProps) {
   // Demo Parent Switcher
   const [selectedParentId, setSelectedParentId] = useState<string>('stud-1'); // Default Joyce Mokoena viewing Thabo
@@ -46,12 +65,21 @@ export default function ParentPortal({
   // Active sub tab
   const [activeTab, setActiveTab] = useState<'child' | 'alerts' | 'fees' | 'documents'>('alerts');
 
+  // Advisory Display View Mode: Formal Letterhead vs WhatsApp / SMS Preview
+  const [advisoryViewMode, setAdvisoryViewMode] = useState<'letterhead' | 'whatsapp'>('letterhead');
+
   // Interactive Payment simulation states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [selectedFeeAmount, setSelectedFeeAmount] = useState(350);
   const [selectedFeeTitle, setSelectedFeeTitle] = useState('Grade 12 CAPS Stationery Levy');
+  const [cardholderName, setCardholderName] = useState(currentChild.parentName);
+
+  // Sync cardholderName when child switches
+  useEffect(() => {
+    setCardholderName(currentChild.parentName);
+  }, [currentChild]);
 
   // Tutoring sign up states
   const [bookedTutoring, setBookedTutoring] = useState<Record<string, boolean>>({});
@@ -68,9 +96,13 @@ export default function ParentPortal({
   const childMarks = state.marks.filter(m => m.studentId === currentChild.id);
   const childMessages = state.messages.filter(m => m.studentId === currentChild.id && m.status === 'Sent');
   const childBehaviour = state.behaviourLogs.filter(b => b.studentId === currentChild.id);
+  const latestTransitAlert = state.transitAlerts && state.transitAlerts.length > 0 ? state.transitAlerts[0] : null;
 
-  const handleBookingTutoring = (msgId: string) => {
+  const handleBookingTutoring = async (msgId: string) => {
     setBookedTutoring(prev => ({ ...prev, [msgId]: true }));
+    if (onBookTutoring) {
+      await onBookTutoring(currentChild.id, msgId);
+    }
   };
 
   const handleReplySubmit = (e: React.FormEvent, msgId: string) => {
@@ -83,16 +115,22 @@ export default function ParentPortal({
     }, 4000);
   };
 
-  const handlePaymentSubmit = () => {
+  const handlePaymentSubmit = async () => {
     setIsProcessingPayment(true);
-    setTimeout(() => {
-      setIsProcessingPayment(false);
+    try {
+      if (onPayFee) {
+        await onPayFee(currentChild.id, selectedFeeTitle, selectedFeeAmount, cardholderName);
+      }
       setPaymentSuccess(true);
       setTimeout(() => {
         setShowPaymentModal(false);
         setPaymentSuccess(false);
       }, 2500);
-    }, 2000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   // Drag & Drop Handlers
@@ -131,6 +169,31 @@ export default function ParentPortal({
 
   return (
     <div className="space-y-6 animate-fade-in" id="parent-portal-root">
+      {/* Live Transit Alert Banner (if driver delay posted today) */}
+      {latestTransitAlert && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-sm p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-300 animate-slide-up">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-sm bg-amber-500/20 text-amber-400">
+              <Bus className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[9px] uppercase tracking-wider font-extrabold bg-amber-500/20 px-2 py-0.5 rounded-sm">
+                  Live Scholar Transit Update
+                </span>
+                <span className="font-mono text-[10px] text-amber-400/80">{latestTransitAlert.timestamp}</span>
+              </div>
+              <p className="text-xs font-semibold text-slate-200 mt-0.5">
+                <strong className="text-amber-400">{latestTransitAlert.driverName}</strong> ({latestTransitAlert.route}): {latestTransitAlert.reason}. Expected delay of ~{latestTransitAlert.estimatedDelayMinutes} mins.
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono font-bold text-amber-400/70 uppercase tracking-widest shrink-0">
+            Real-time SSE broadcast
+          </span>
+        </div>
+      )}
+
       {/* Parent Greeting / Switcher Card */}
       <div className="bg-[#0c0e14] text-slate-300 rounded-sm p-6 border border-white/10 relative overflow-hidden" id="parent-header">
         <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-sky-500/5 blur-3xl pointer-events-none"></div>
@@ -215,9 +278,37 @@ export default function ParentPortal({
       {/* TAB: Inbox / AI Alerts */}
       {activeTab === 'alerts' && (
         <div className="space-y-6" id="parent-panel-alerts">
-          <div className="bg-[#0c0e14] p-6 rounded-sm border border-white/5">
-            <h2 className="text-lg font-serif italic text-white mb-1">Grade Head & Academic Advisory Inbox</h2>
-            <p className="text-slate-400 text-xs">Direct notifications from continuous academic monitoring. Please review the concerns and book supportive tutoring options below.</p>
+          {/* Header & Format Toggle */}
+          <div className="bg-[#0c0e14] p-5 rounded-sm border border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h2 className="text-lg font-serif italic text-white mb-1">Grade Head & Academic Advisory Inbox</h2>
+              <p className="text-slate-400 text-xs">Direct notifications from continuous academic monitoring at Phakamani Secondary.</p>
+            </div>
+
+            {/* View Mode Switcher: Formal Letterhead vs WhatsApp / SMS Preview */}
+            <div className="flex items-center gap-2 bg-[#050608] p-1.5 rounded-sm border border-white/10 shrink-0">
+              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider font-bold px-1 hidden sm:inline">Format:</span>
+              <button
+                onClick={() => setAdvisoryViewMode('letterhead')}
+                className={`px-3 py-1.5 rounded-sm text-xs font-mono font-bold uppercase tracking-wider transition flex items-center gap-1.5 ${
+                  advisoryViewMode === 'letterhead'
+                    ? 'bg-white text-black shadow-sm font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" /> Formal Letterhead
+              </button>
+              <button
+                onClick={() => setAdvisoryViewMode('whatsapp')}
+                className={`px-3 py-1.5 rounded-sm text-xs font-mono font-bold uppercase tracking-wider transition flex items-center gap-1.5 ${
+                  advisoryViewMode === 'whatsapp'
+                    ? 'bg-emerald-500 text-black shadow-sm font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-400" /> WhatsApp / SMS Preview
+              </button>
+            </div>
           </div>
 
           {childMessages.length === 0 ? (
@@ -227,35 +318,201 @@ export default function ParentPortal({
               <p className="text-slate-400 text-xs max-w-sm mx-auto">No academic alerts or continuous risk warnings have been generated for {currentChild.name} recently. Keep up the solid progress!</p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-8">
               {childMessages.map((msg) => {
-                const isBooked = bookedTutoring[msg.id];
+                const isBooked = state.tutoringBookings?.some(b => b.studentId === currentChild.id && b.messageId === msg.id) || bookedTutoring[msg.id];
                 const isReplying = replySuccess === msg.id;
-                
+
+                if (advisoryViewMode === 'whatsapp') {
+                  // Authentic South African WhatsApp / SMS Chat Bubble Preview
+                  return (
+                    <div key={msg.id} className="max-w-2xl mx-auto rounded-xl border border-white/10 overflow-hidden shadow-2xl bg-[#0b141a] animate-fade-in font-sans">
+                      {/* WhatsApp Header */}
+                      <div className="bg-[#075e54] text-white px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div className="w-10 h-10 rounded-full bg-[#128c7e] border border-white/20 flex items-center justify-center font-serif font-black text-white text-base">
+                              PSS
+                            </div>
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#075e54] absolute bottom-0 right-0"></span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-sm tracking-tight">Phakamani Secondary School</span>
+                              <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                            </div>
+                            <p className="text-[11px] text-emerald-100/80 leading-none mt-0.5">Official Academic Support • Online</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-emerald-100">
+                          <Video className="w-4 h-4 cursor-pointer hover:text-white" />
+                          <Phone className="w-4 h-4 cursor-pointer hover:text-white" />
+                          <MoreVertical className="w-4 h-4 cursor-pointer hover:text-white" />
+                        </div>
+                      </div>
+
+                      {/* WhatsApp Chat Canvas */}
+                      <div className="p-4 sm:p-6 space-y-4 bg-[#0b141a] bg-opacity-95 relative" style={{ backgroundImage: 'radial-gradient(#1f2c34 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
+                        {/* Date Header Pill */}
+                        <div className="flex justify-center">
+                          <span className="bg-[#182229] text-[10px] text-slate-400 px-3 py-1 rounded-full font-mono uppercase tracking-wider shadow-sm border border-white/5">
+                            Today • Official Notification
+                          </span>
+                        </div>
+
+                        {/* End-to-end encryption notice */}
+                        <div className="bg-[#182229]/80 border border-amber-500/10 rounded-md p-2 text-center text-[10px] text-amber-200/80 font-mono flex items-center justify-center gap-1.5">
+                          <span>🔒 Messages are protected with end-to-end encryption. S.A. POPIA Compliant.</span>
+                        </div>
+
+                        {/* Incoming WhatsApp Chat Bubble */}
+                        <div className="flex justify-start">
+                          <div className="bg-[#202c33] text-slate-100 rounded-lg rounded-tl-none p-4 max-w-lg shadow-md border border-white/5 space-y-3">
+                            <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+                              <span className="text-xs font-bold text-emerald-400">Academic Support Group • Phakamani</span>
+                              <span className="text-[10px] text-slate-400 font-mono">Ref: #PSS-{msg.id.slice(-4)}</span>
+                            </div>
+
+                            <h4 className="font-bold text-sm text-white">{msg.title}</h4>
+
+                            <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                              {msg.body}
+                            </div>
+
+                            {/* WhatsApp Business Action Buttons inside chat */}
+                            <div className="pt-2 border-t border-white/10 space-y-2">
+                              {isBooked ? (
+                                <div className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold py-2 px-3 rounded-md flex items-center justify-center gap-1.5">
+                                  <CheckCircle className="w-4 h-4" /> CAPS Tutoring Confirmed (Enrolled)
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleBookingTutoring(msg.id)}
+                                  className="w-full bg-[#00a884] hover:bg-[#029070] text-black font-extrabold text-xs py-2.5 px-3 rounded-md transition flex items-center justify-center gap-1.5 shadow"
+                                >
+                                  <Calendar className="w-4 h-4" /> Enroll in Afternoon Tutoring (R0)
+                                </button>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                <button
+                                  onClick={() => {
+                                    setSelectedFeeTitle('Grade 12 CAPS Stationery Levy');
+                                    setSelectedFeeAmount(350);
+                                    setShowPaymentModal(true);
+                                  }}
+                                  className="bg-white/5 hover:bg-white/10 text-slate-200 font-bold py-2 rounded-md border border-white/10 flex items-center justify-center gap-1"
+                                >
+                                  <CreditCard className="w-3.5 h-3.5 text-sky-400" /> Settle Levies (R350)
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setReplyText(`Good day Grade Head, I have noted the alert regarding ${currentChild.name} and would like to confirm our support.`);
+                                  }}
+                                  className="bg-white/5 hover:bg-white/10 text-slate-200 font-bold py-2 rounded-md border border-white/10 flex items-center justify-center gap-1"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" /> Quick Reply
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Timestamp & Double Blue Checkmarks */}
+                            <div className="flex justify-end items-center gap-1 pt-1 text-[10px] text-slate-400">
+                              <span>{msg.dateSent ? `${msg.dateSent} • 08:30` : '08:30'}</span>
+                              <CheckCheck className="w-4 h-4 text-[#53bdeb]" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Direct WhatsApp Response Bar */}
+                        <form onSubmit={(e) => handleReplySubmit(e, msg.id)} className="pt-2 flex items-center gap-2">
+                          <div className="flex-1 bg-[#202c33] rounded-full px-4 py-2 flex items-center gap-2 border border-white/5">
+                            <Smile className="w-4 h-4 text-slate-400 cursor-pointer" />
+                            <input
+                              type="text"
+                              value={replyText}
+                              onChange={(e) => setReplyText(e.target.value)}
+                              placeholder={`Reply to Phakamani regarding ${currentChild.name}...`}
+                              className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                            />
+                            <Paperclip className="w-4 h-4 text-slate-400 cursor-pointer" />
+                          </div>
+                          <button
+                            type="submit"
+                            disabled={!replyText.trim()}
+                            className="w-10 h-10 rounded-full bg-[#00a884] hover:bg-[#029070] disabled:opacity-40 text-black flex items-center justify-center transition shadow shrink-0"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                        </form>
+
+                        {isReplying && (
+                          <div className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs p-2 rounded-md text-center">
+                            ✓ WhatsApp reply transmitted to Phakamani administrative desk.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Formal School Letterhead View
                 return (
                   <div key={msg.id} className="bg-[#0c0e14] rounded-sm border border-white/10 shadow-2xl overflow-hidden flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-white/5 animate-fade-in">
-                    {/* Left Column: Email contents */}
-                    <div className="p-6 md:w-3/5 space-y-4">
-                      <div className="flex justify-between items-start gap-4">
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-mono font-bold text-sky-400 uppercase tracking-wider block">Official Advisory Alert</span>
-                          <h3 className="font-serif italic text-white text-lg leading-tight">{msg.title}</h3>
+                    {/* Left Column: Official Letterhead */}
+                    <div className="p-6 md:w-3/5 space-y-6">
+                      {/* Formal Letterhead Masthead */}
+                      <div className="border-b border-white/10 pb-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white text-black font-black flex items-center justify-center rounded-sm font-serif text-lg">
+                              PS
+                            </div>
+                            <div>
+                              <h3 className="font-serif uppercase font-bold text-white text-sm tracking-wide">Phakamani Secondary School</h3>
+                              <p className="text-[9px] font-mono text-sky-400 uppercase tracking-widest">Gauteng Department of Education • EMIS: 700400124</p>
+                            </div>
+                          </div>
+                          <span className="inline-flex items-center gap-1 text-[9px] font-mono bg-sky-500/10 border border-sky-500/25 text-sky-400 font-bold px-2 py-0.5 rounded-sm">
+                            <FileText className="w-3 h-3" /> Official Notice
+                          </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 text-[9px] font-mono bg-sky-500/10 border border-sky-500/25 text-sky-400 font-bold px-2.5 py-0.5 rounded-sm shrink-0">
-                          <Mail className="w-3 h-3 fill-current" /> Active Intervention
-                        </span>
+
+                        <div className="grid grid-cols-2 text-[9px] font-mono text-slate-400 pt-2 border-t border-white/5">
+                          <div>
+                            <span className="text-slate-500">REF NO:</span> PSS/EW-2026/G12-{msg.id.slice(-4)}<br />
+                            <span className="text-slate-500">LEARNER:</span> {currentChild.name} ({currentChild.grade})
+                          </div>
+                          <div className="text-right">
+                            <span className="text-slate-500">DATE ISSUED:</span> {msg.dateSent || msg.dateDrafted}<br />
+                            <span className="text-slate-500">RECIPIENT:</span> {currentChild.parentName}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Letter Subject */}
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-mono font-bold text-sky-400 uppercase tracking-wider block">Official Advisory Subject</span>
+                        <h4 className="font-serif italic text-white text-lg leading-tight">{msg.title}</h4>
                       </div>
 
                       {/* Content text */}
-                      <div className="bg-[#050608] p-4 rounded-sm border border-white/5 text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
+                      <div className="bg-[#050608] p-5 rounded-sm border border-white/5 text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
                         {msg.body}
                       </div>
 
-                      {/* Diagnostic Summary pill */}
-                      <div className="flex gap-2.5 text-[9px] font-mono text-slate-500 items-center">
-                        <span>Reported by: Academic Support Group</span>
-                        <span>•</span>
-                        <span>Logged: {msg.dateSent}</span>
+                      {/* Formal Sign-off with Digital Stamp */}
+                      <div className="flex justify-between items-end border-t border-white/10 pt-4">
+                        <div className="space-y-1 text-xs">
+                          <p className="font-serif italic text-slate-200">Mrs. T. Ngubane & Academic Continuity Committee</p>
+                          <p className="text-[10px] font-mono text-slate-500">Phakamani Secondary School • Soweto Central</p>
+                        </div>
+                        
+                        <div className="border-2 border-emerald-500/30 text-emerald-400 font-mono text-[8px] uppercase tracking-wider px-2.5 py-1.5 rounded-sm text-center rotate-[-3deg] bg-emerald-500/5">
+                          <span className="block font-bold">APPROVED & ISSUED</span>
+                          <span className="text-[7px] text-slate-400">PHAKAMANI CASS BD</span>
+                        </div>
                       </div>
                     </div>
 
@@ -273,7 +530,7 @@ export default function ParentPortal({
                           <p className="text-slate-400 text-[11px] leading-normal">COMPULSORY REMEDIATION: Enrollment in afternoon lessons (Mon - Thu, 14:30 - 15:30) with subject educators.</p>
                           
                           {isBooked ? (
-                            <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-bold p-2 rounded-sm flex items-center justify-center gap-1.5">
+                            <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-bold p-2.5 rounded-sm flex items-center justify-center gap-1.5">
                               <CheckCircle className="w-4 h-4" /> Learner Enrolled & Confirmed
                             </div>
                           ) : (
@@ -315,7 +572,7 @@ export default function ParentPortal({
                       </div>
 
                       <div className="text-[9px] font-mono text-slate-500 border-t border-white/5 pt-3 leading-normal">
-                        *Responses submitted here are directly routed to Phakamani administrative desktops in real-time.
+                        *Responses submitted here are directly routed to Phakamani administrative desktops in real-time via PostgreSQL.
                       </div>
                     </div>
                   </div>
@@ -428,20 +685,17 @@ export default function ParentPortal({
         <div className="space-y-6 animate-fade-in" id="parent-panel-fees">
           <div className="bg-[#0c0e14] p-6 rounded-sm border border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h3 className="font-serif italic text-white text-base">Phakamani Outstanding Statement of Account</h3>
-              <p className="text-slate-400 text-xs">View Term 2 compulsory education fees and stationery levy accounts.</p>
+              <h3 className="font-serif italic text-white text-base">Phakamani High School Account Statement</h3>
+              <p className="text-slate-400 text-xs mt-1">Student Account: {currentChild.name} (Grade {currentChild.grade}) • Parent: {currentChild.parentName}</p>
             </div>
-            <div className="bg-[#050608] text-white p-3 rounded-sm border border-white/10 flex items-center gap-2.5 shrink-0">
-              <DollarSign className="w-5 h-5 text-sky-400" />
-              <div>
-                <span className="text-[9px] text-slate-500 block uppercase font-mono font-bold">Total Outstanding</span>
-                <span className="text-base font-bold font-mono text-slate-100">R2,750.00</span>
-              </div>
+            <div className="text-right">
+              <span className="text-[10px] font-mono text-slate-500 uppercase block tracking-wider">Current Balance Due</span>
+              <span className="text-2xl font-mono font-extrabold text-amber-400">R350.00</span>
             </div>
           </div>
 
-          <div className="bg-[#0c0e14] rounded-sm border border-white/5 overflow-hidden shadow-2xl">
-            <div className="p-4 bg-[#080a0f] text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider grid grid-cols-12 border-b border-white/5">
+          <div className="bg-[#0c0e14] rounded-sm border border-white/5 overflow-hidden">
+            <div className="p-4 bg-[#080a0f] border-b border-white/5 grid grid-cols-12 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
               <div className="col-span-6 pl-2">Fee Description</div>
               <div className="col-span-2 text-center">Due Date</div>
               <div className="col-span-2 text-right">Amount</div>
@@ -449,33 +703,12 @@ export default function ParentPortal({
             </div>
 
             <div className="divide-y divide-white/5 text-xs text-slate-300">
-              <div className="p-4 grid grid-cols-12 items-center">
-                <div className="col-span-6 pl-2 font-bold text-slate-200">
-                  Term 2 Phakamani High School Fees (Remainder)
-                  <span className="block text-[10px] text-slate-500 font-sans font-normal mt-0.5">Standard High School Compulsory Levy</span>
+              <div className="p-4 grid grid-cols-12 items-center hover:bg-white/[0.02] transition">
+                <div className="col-span-6 pl-2">
+                  <span className="font-bold text-white block">Grade 12 CAPS Stationery Levy</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Includes Mathematics graph books & Life Sciences laboratory workbook</span>
                 </div>
-                <div className="col-span-2 text-center text-slate-400 font-mono">2026-07-31</div>
-                <div className="col-span-2 text-right font-bold font-mono">R2,400.00</div>
-                <div className="col-span-2 text-right pr-2">
-                  <button
-                    onClick={() => {
-                      setSelectedFeeTitle('Term 2 School Fees Remainder');
-                      setSelectedFeeAmount(2400);
-                      setShowPaymentModal(true);
-                    }}
-                    className="bg-sky-500 hover:bg-sky-400 text-black font-extrabold uppercase tracking-wider text-[10px] py-2 px-4 rounded-sm transition shadow-lg shadow-sky-500/10"
-                  >
-                    Pay
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 grid grid-cols-12 items-center">
-                <div className="col-span-6 pl-2 font-bold text-slate-200">
-                  Grade 12 CAPS Stationery Levy
-                  <span className="block text-[10px] text-slate-500 font-sans font-normal mt-0.5">Required files, exercise books, calculators</span>
-                </div>
-                <div className="col-span-2 text-center text-slate-400 font-mono">2026-07-15</div>
+                <div className="col-span-2 text-center font-mono text-[11px] text-slate-400">30 April 2026</div>
                 <div className="col-span-2 text-right font-bold font-mono">R350.00</div>
                 <div className="col-span-2 text-right pr-2">
                   <button
@@ -492,6 +725,33 @@ export default function ParentPortal({
               </div>
             </div>
           </div>
+
+          {/* Settled Payment Receipts (Persisted in PostgreSQL) */}
+          {state.feePayments && state.feePayments.filter(p => p.studentId === currentChild.id).length > 0 && (
+            <div className="bg-[#0c0e14] p-6 rounded-sm border border-white/5 space-y-4 animate-fade-in">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <h4 className="font-serif italic text-white text-sm flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" /> Settled Payment Receipts
+                </h4>
+                <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                  PostgreSQL Persisted
+                </span>
+              </div>
+              <div className="space-y-2">
+                {state.feePayments.filter(p => p.studentId === currentChild.id).map(p => (
+                  <div key={p.id} className="p-3 bg-[#050608] border border-white/5 rounded-sm flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-bold text-slate-200 block">{p.feeTitle}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">Paid by: {p.cardholderName || p.parentName} • Date: {p.paymentDate || p.date}</span>
+                    </div>
+                    <span className="font-mono font-bold text-emerald-400">
+                      R{p.amount.toFixed(2)} Paid
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Payment Modal Simulation */}
           {showPaymentModal && (
@@ -520,7 +780,8 @@ export default function ParentPortal({
                       <input 
                         type="text" 
                         required 
-                        defaultValue={currentChild.parentName}
+                        value={cardholderName}
+                        onChange={(e) => setCardholderName(e.target.value)}
                         className="w-full bg-[#050608] border border-white/5 text-white rounded-sm p-2.5 focus:ring-1 focus:ring-sky-500 focus:outline-none"
                       />
                     </div>

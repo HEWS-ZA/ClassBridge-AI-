@@ -24,9 +24,10 @@ interface DriverPortalProps {
   state: {
     students: Student[];
   };
+  onNotifyDelay?: (driverName: string, route: string, reason: string, estimatedDelayMinutes: number) => Promise<boolean>;
 }
 
-export default function DriverPortal({ state }: DriverPortalProps) {
+export default function DriverPortal({ state, onNotifyDelay }: DriverPortalProps) {
   // Mock Route
   const routeName = 'Soweto Route A • Phakamani High Bus #4';
   const driverName = 'Baba Sipho';
@@ -47,15 +48,28 @@ export default function DriverPortal({ state }: DriverPortalProps) {
     setBoardedStatus(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleNotifyDelay = () => {
+  const handleNotifyDelay = async () => {
     setDelayStatus('notifying');
-    setTimeout(() => {
+    try {
+      if (onNotifyDelay) {
+        await onNotifyDelay(driverName, routeName, delayReason, 15);
+      } else {
+        await fetch('/api/driver/delay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ driverName, route: routeName, reason: delayReason, estimatedDelayMinutes: 15 })
+        });
+      }
       setDelayStatus('notified');
       setTimeout(() => {
         setDelayStatus('normal');
       }, 4000);
-    }, 1500);
+    } catch (err) {
+      console.error(err);
+      setDelayStatus('normal');
+    }
   };
+
 
   return (
     <div className="space-y-6" id="driver-portal-root">

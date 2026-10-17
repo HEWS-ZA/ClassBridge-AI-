@@ -1,0 +1,518 @@
+{
+  "students": [
+    {
+      "id": "stud-1",
+      "name": "Thabo Mokoena",
+      "grade": "Grade 12A",
+      "parentName": "Joyce Mokoena",
+      "parentEmail": "joyce.mokoena@gmail.com",
+      "parentPhone": "+27 82 456 7890",
+      "riskScore": 71,
+      "riskLevel": "High",
+      "attendancePercent": 69,
+      "averageMark": 52,
+      "conductScore": 95,
+      "profilePhoto": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200",
+      "bio": "Thabo is a passionate football player who wants to study Mechanical Engineering, but has struggled to stay focused this term."
+    },
+    {
+      "id": "stud-2",
+      "name": "Lerato Dlamini",
+      "grade": "Grade 11B",
+      "parentName": "Sipho Dlamini",
+      "parentEmail": "sipho.dlamini@outlook.com",
+      "parentPhone": "+27 73 987 6543",
+      "riskScore": 0,
+      "riskLevel": "Low",
+      "attendancePercent": 100,
+      "averageMark": 85,
+      "conductScore": 115,
+      "profilePhoto": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+      "bio": "Lerato is the Grade 11 Class Representative. She participates in debating and maintains exceptional marks across all subjects."
+    },
+    {
+      "id": "stud-3",
+      "name": "Pieter Naidoo",
+      "grade": "Grade 12A",
+      "parentName": "Anita Naidoo",
+      "parentEmail": "anita.naidoo@yahoo.com",
+      "parentPhone": "+27 84 321 0987",
+      "riskScore": 47,
+      "riskLevel": "Medium",
+      "attendancePercent": 90,
+      "averageMark": 58,
+      "conductScore": 95,
+      "profilePhoto": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200",
+      "bio": "Pieter is a quiet learner who excels in computer literacy but has recently experienced a drop in Mathematics and Physical Sciences marks."
+    },
+    {
+      "id": "stud-4",
+      "name": "Zama Zwane",
+      "grade": "Grade 11A",
+      "parentName": "Bongiwe Zwane",
+      "parentEmail": "bongiwe.zwane@webmail.co.za",
+      "parentPhone": "+27 71 555 1234",
+      "riskScore": 80,
+      "riskLevel": "High",
+      "attendancePercent": 56,
+      "averageMark": 51,
+      "conductScore": 85,
+      "profilePhoto": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200",
+      "bio": "Zama has creative talent in drama, but high absenteeism rates have caused her to miss critical continuous assessment tasks."
+    },
+    {
+      "id": "stud-5",
+      "name": "Sibongile Nkosi",
+      "grade": "Grade 12B",
+      "parentName": "Themba Nkosi",
+      "parentEmail": "themba.nkosi@telkomsa.net",
+      "parentPhone": "+27 83 222 4455",
+      "riskScore": 0,
+      "riskLevel": "Low",
+      "attendancePercent": 100,
+      "averageMark": 91,
+      "conductScore": 100,
+      "profilePhoto": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=200",
+      "bio": "Sibongile is the head prefect and has received academic half-colours. She plans to study Medicine at UCT next year."
+    }
+  ],
+  "teachers": [
+    {
+      "id": "teach-1",
+      "name": "Mrs. Thandi Ngubane",
+      "subject": "Mathematics",
+      "grade": "Grade 12",
+      "status": "Active"
+    },
+    {
+      "id": "teach-2",
+      "name": "Mr. Jaco Pretorius",
+      "subject": "Physical Sciences",
+      "grade": "Grade 12",
+      "status": "Active"
+    },
+    {
+      "id": "teach-3",
+      "name": "Ms. Nomvula Sithole",
+      "subject": "Life Sciences",
+      "grade": "Grade 11",
+      "status": "Active"
+    },
+    {
+      "id": "teach-4",
+      "name": "Mr. David Abrahamse",
+      "subject": "English First Additional Language",
+      "grade": "Grade 10-12",
+      "status": "Active"
+    }
+  ],
+  "lessonPlans": [
+    {
+      "id": "plan-1",
+      "grade": "Grade 12",
+      "subject": "Mathematics",
+      "topic": "Calculus: Limits and Differential Coefficients",
+      "standardNotes": "Definition of a limit. Finding differential coefficients from first principles: f'(x) = lim[h->0](f(x+h) - f(x))/h. Power rule for differentiation: d/dx(x^n) = n*x^(n-1). Standard CAPS curriculum pacing guideline for Term 2.",
+      "curriculumReference": "CAPS Mathematics Section 3.1.2"
+    },
+    {
+      "id": "plan-2",
+      "grade": "Grade 11",
+      "subject": "Life Sciences",
+      "topic": "Photosynthesis: Light and Dark Phases",
+      "standardNotes": "Structure of chloroplasts. Light-dependent phase (occurs in thylakoids, produces ATP and NADPH, releases oxygen). Light-independent/Dark phase (occurs in stroma, fixes CO2 into glucose using Calvin Cycle). Environmental factors affecting photosynthesis (light intensity, CO2 concentration, temperature).",
+      "curriculumReference": "CAPS Life Sciences Section 2.1.1"
+    },
+    {
+      "id": "plan-3",
+      "grade": "Grade 12",
+      "subject": "Physical Sciences",
+      "topic": "Newton's Second Law of Motion",
+      "standardNotes": "Statement of Newton's Second Law: When a net force acts on an object, the object accelerates in the direction of the net force with an acceleration directly proportional to the force and inversely proportional to the mass. Equation: F_net = m*a. Free body diagrams and frictional forces (static and kinetic).",
+      "curriculumReference": "CAPS Physical Sciences Section 1.4.2"
+    },
+    {
+      "id": "plan-4",
+      "grade": "Grade 12",
+      "subject": "English First Additional Language",
+      "topic": "Literary Study: Hamlet Act III Scene 1 (Soliloquy)",
+      "standardNotes": "Analysis of Hamlet's famous \"To be or not to be\" soliloquy. Themes of life, death, action vs. inaction. Key literary devices: metaphor, soliloquy, rhetorical questioning. Understanding early modern English vocabulary in context.",
+      "curriculumReference": "CAPS English FAL Section 2.4.1"
+    }
+  ],
+  "marks": [
+    {
+      "id": "mark-1",
+      "studentId": "stud-1",
+      "subject": "Mathematics",
+      "testName": "Term 1 Controlled Test",
+      "markValue": 58,
+      "maxMark": 100,
+      "date": "2026-03-10",
+      "term": 1
+    },
+    {
+      "id": "mark-2",
+      "studentId": "stud-1",
+      "subject": "Mathematics",
+      "testName": "April Assignment",
+      "markValue": 46,
+      "maxMark": 100,
+      "date": "2026-04-18",
+      "term": 2
+    },
+    {
+      "id": "mark-3",
+      "studentId": "stud-1",
+      "subject": "Mathematics",
+      "testName": "Term 2 June Exam",
+      "markValue": 35,
+      "maxMark": 100,
+      "date": "2026-06-15",
+      "term": 2
+    },
+    {
+      "id": "mark-4",
+      "studentId": "stud-1",
+      "subject": "Physical Sciences",
+      "testName": "June Practical Examination",
+      "markValue": 42,
+      "maxMark": 100,
+      "date": "2026-06-12",
+      "term": 2
+    },
+    {
+      "id": "mark-5",
+      "studentId": "stud-1",
+      "subject": "English First Additional Language",
+      "testName": "Term 2 Essay Assessment",
+      "markValue": 55,
+      "maxMark": 100,
+      "date": "2026-05-28",
+      "term": 2
+    },
+    {
+      "id": "mark-6",
+      "studentId": "stud-2",
+      "subject": "Life Sciences",
+      "testName": "Term 1 Practical",
+      "markValue": 88,
+      "maxMark": 100,
+      "date": "2026-03-05",
+      "term": 1
+    },
+    {
+      "id": "mark-7",
+      "studentId": "stud-2",
+      "subject": "Life Sciences",
+      "testName": "Term 2 Theory Test",
+      "markValue": 85,
+      "maxMark": 100,
+      "date": "2026-05-12",
+      "term": 2
+    },
+    {
+      "id": "mark-8",
+      "studentId": "stud-2",
+      "subject": "Mathematics",
+      "testName": "Term 2 June Exam",
+      "markValue": 82,
+      "maxMark": 100,
+      "date": "2026-06-15",
+      "term": 2
+    },
+    {
+      "id": "mark-9",
+      "studentId": "stud-3",
+      "subject": "Mathematics",
+      "testName": "Term 1 Controlled Test",
+      "markValue": 74,
+      "maxMark": 100,
+      "date": "2026-03-10",
+      "term": 1
+    },
+    {
+      "id": "mark-10",
+      "studentId": "stud-3",
+      "subject": "Mathematics",
+      "testName": "April Assignment",
+      "markValue": 62,
+      "maxMark": 100,
+      "date": "2026-04-18",
+      "term": 2
+    },
+    {
+      "id": "mark-11",
+      "studentId": "stud-3",
+      "subject": "Mathematics",
+      "testName": "Term 2 June Exam",
+      "markValue": 45,
+      "maxMark": 100,
+      "date": "2026-06-15",
+      "term": 2
+    },
+    {
+      "id": "mark-12",
+      "studentId": "stud-3",
+      "subject": "Physical Sciences",
+      "testName": "June Practical Examination",
+      "markValue": 50,
+      "maxMark": 100,
+      "date": "2026-06-12",
+      "term": 2
+    },
+    {
+      "id": "mark-13",
+      "studentId": "stud-4",
+      "subject": "English First Additional Language",
+      "testName": "Term 1 Controlled Test",
+      "markValue": 65,
+      "maxMark": 100,
+      "date": "2026-03-12",
+      "term": 1
+    },
+    {
+      "id": "mark-14",
+      "studentId": "stud-4",
+      "subject": "English First Additional Language",
+      "testName": "Term 2 June Exam",
+      "markValue": 40,
+      "maxMark": 100,
+      "date": "2026-06-18",
+      "term": 2
+    },
+    {
+      "id": "mark-15",
+      "studentId": "stud-4",
+      "subject": "Life Sciences",
+      "testName": "Term 2 Theory Test",
+      "markValue": 48,
+      "maxMark": 100,
+      "date": "2026-05-12",
+      "term": 2
+    },
+    {
+      "id": "mark-16",
+      "studentId": "stud-5",
+      "subject": "Mathematics",
+      "testName": "Term 2 June Exam",
+      "markValue": 94,
+      "maxMark": 100,
+      "date": "2026-06-15",
+      "term": 2
+    },
+    {
+      "id": "mark-17",
+      "studentId": "stud-5",
+      "subject": "Physical Sciences",
+      "testName": "June Practical Examination",
+      "markValue": 88,
+      "maxMark": 100,
+      "date": "2026-06-12",
+      "term": 2
+    },
+    {
+      "id": "mark-1792233574318",
+      "studentId": "stud-1",
+      "subject": "Mathematics",
+      "testName": "Trigonometry Test",
+      "markValue": 75,
+      "maxMark": 100,
+      "date": "2026-10-17",
+      "term": 2
+    }
+  ],
+  "attendanceLogs": [
+    {
+      "id": "att-1",
+      "studentId": "stud-1",
+      "date": "2026-05-04",
+      "status": "Absent",
+      "reason": "Flu symptoms"
+    },
+    {
+      "id": "att-2",
+      "studentId": "stud-1",
+      "date": "2026-05-11",
+      "status": "Present"
+    },
+    {
+      "id": "att-3",
+      "studentId": "stud-1",
+      "date": "2026-05-18",
+      "status": "Absent",
+      "reason": "Family transport issue"
+    },
+    {
+      "id": "att-4",
+      "studentId": "stud-1",
+      "date": "2026-06-01",
+      "status": "Absent",
+      "reason": "Unexcused"
+    },
+    {
+      "id": "att-5",
+      "studentId": "stud-1",
+      "date": "2026-06-08",
+      "status": "Present"
+    },
+    {
+      "id": "att-6",
+      "studentId": "stud-1",
+      "date": "2026-06-15",
+      "status": "Absent",
+      "reason": "Overslept"
+    },
+    {
+      "id": "att-7",
+      "studentId": "stud-4",
+      "date": "2026-05-04",
+      "status": "Absent",
+      "reason": "Unexcused"
+    },
+    {
+      "id": "att-8",
+      "studentId": "stud-4",
+      "date": "2026-05-05",
+      "status": "Absent",
+      "reason": "Unexcused"
+    },
+    {
+      "id": "att-9",
+      "studentId": "stud-4",
+      "date": "2026-05-12",
+      "status": "Present"
+    },
+    {
+      "id": "att-10",
+      "studentId": "stud-4",
+      "date": "2026-05-18",
+      "status": "Absent",
+      "reason": "Sore throat"
+    },
+    {
+      "id": "att-11",
+      "studentId": "stud-4",
+      "date": "2026-05-25",
+      "status": "Absent",
+      "reason": "Unexcused"
+    },
+    {
+      "id": "att-12",
+      "studentId": "stud-4",
+      "date": "2026-06-02",
+      "status": "Absent",
+      "reason": "Unexcused"
+    },
+    {
+      "id": "att-13",
+      "studentId": "stud-4",
+      "date": "2026-06-12",
+      "status": "Absent",
+      "reason": "No transport"
+    }
+  ],
+  "behaviourLogs": [
+    {
+      "id": "log-1",
+      "studentId": "stud-1",
+      "category": "Concern",
+      "description": "Sleeping during mathematics class and did not submit homework book.",
+      "date": "2026-05-12",
+      "points": -10
+    },
+    {
+      "id": "log-2",
+      "studentId": "stud-1",
+      "category": "Concern",
+      "description": "Arrived 20 minutes late to period 1 test without note.",
+      "date": "2026-05-20",
+      "points": -5
+    },
+    {
+      "id": "log-3",
+      "studentId": "stud-1",
+      "category": "Positive",
+      "description": "Helped clean and pack up physical science laboratory after experiments.",
+      "date": "2026-06-04",
+      "points": 10
+    },
+    {
+      "id": "log-4",
+      "studentId": "stud-2",
+      "category": "Positive",
+      "description": "Led the Grade 11 peer mentoring group during study period. Commendable leadership.",
+      "date": "2026-05-14",
+      "points": 15
+    },
+    {
+      "id": "log-5",
+      "studentId": "stud-3",
+      "category": "Concern",
+      "description": "Appeared highly distracted and disengaged during science exam review.",
+      "date": "2026-06-16",
+      "points": -5
+    },
+    {
+      "id": "log-6",
+      "studentId": "stud-4",
+      "category": "Concern",
+      "description": "Missed scheduled continuous assessment test without doctor's certificate.",
+      "date": "2026-06-02",
+      "points": -15
+    }
+  ],
+  "generatedLessons": [],
+  "messages": [
+    {
+      "id": "msg-1",
+      "studentId": "stud-1",
+      "title": "Mathematics performance and engagement warning",
+      "body": "Dear Joyce Mokoena,\n\nWe are contacting you from Phakamani Secondary School regarding your child Thabo Mokoena. Our academic monitor has identified a negative trend in Thabo's Mathematics performance. His test scores have declined from 58% in Term 1 to 35% in his recent June Examination.\n\nFurthermore, Thabo has accumulated 4 absences this term and was logged for sleeping in mathematics class on 2026-05-12. This combination of missing instructional time and disengagement is severely affecting his continuous assessment marks.\n\nWe would like to invite you for an urgent meeting with Mrs. Thandi Ngubane on Thursday at 14:00 to discuss a remediation plan, which may include our daily afternoon tutoring program.\n\nKind regards,\nAcademic Continuity Committee\nPhakamani Secondary School",
+      "status": "Sent",
+      "dateDrafted": "2026-06-20",
+      "dateSent": "2026-06-21"
+    }
+  ],
+  "schoolRules": {
+    "conductPolicy": "Phakamani Secondary School Code of Conduct:\n1. Academic Integrity: Plagiarism or cheating of any form results in immediate zero and disciplinary hearing.\n2. Attendance: Learners must attend school daily. Absences must be explained by a doctor's certificate or formal parent note within 24 hours.\n3. Uniform and Grooming: Prescribed school uniform must be worn with pride at all times during school hours and school events.\n4. Electronic Devices: Mobile phones must be switched off and placed in schoolbags during lesson hours, unless requested by a teacher for lesson participation.",
+    "stationeryList": [
+      "5x 72-page Feint & Margin Exercise Books",
+      "2x 192-page Hardcover Exercise Books (Maths / Sciences)",
+      "Blue & Black ballpoint pens, HB drawing pencils, eraser, sharpener",
+      "Mathematical Instrument Set (protractor, compass, ruler)",
+      "CASIO fx-82ZA PLUS II Scientific Calculator (Grade 10-12 mandatory)",
+      "1x A4 Ring Binder File and divider sheets"
+    ],
+    "importantDates": [
+      {
+        "event": "Term 3 Begins",
+        "date": "2026-07-15"
+      },
+      {
+        "event": "Grade 12 Trials Examinations Start",
+        "date": "2026-08-25"
+      },
+      {
+        "event": "Parent-Teacher Consultative Day",
+        "date": "2026-09-05"
+      },
+      {
+        "event": "Term 3 Spring Holidays Break",
+        "date": "2026-09-23"
+      }
+    ]
+  },
+  "feePayments": [
+    {
+      "id": "pay-1792233579222",
+      "studentId": "stud-1",
+      "parentName": "Joyce Mokoena",
+      "feeTitle": "Grade 12 CAPS Stationery Levy",
+      "amount": 350,
+      "date": "2026-10-17",
+      "reference": "PHK-579223"
+    }
+  ],
+  "tutoringBookings": []
+}

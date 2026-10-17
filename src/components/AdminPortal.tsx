@@ -103,6 +103,7 @@ export default function AdminPortal({
   const [behPoints, setBehPoints] = useState(10);
 
   const [recordLogSuccess, setRecordLogSuccess] = useState(false);
+  const [formValidationError, setFormValidationError] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
   const handleTeacherToggle = async (teacherId: string, currentStatus: 'Active' | 'Absent') => {
@@ -162,26 +163,66 @@ export default function AdminPortal({
 
   const handleLogSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!logStudentId) return;
+    setFormValidationError(null);
+
+    if (!logStudentId) {
+      setFormValidationError('Please select a learner from the student registry.');
+      return;
+    }
 
     try {
       if (logType === 'mark') {
+        if (!markSubject.trim()) {
+          setFormValidationError('Subject selection is required.');
+          return;
+        }
+        if (!markName.trim()) {
+          setFormValidationError('Assessment test name is required.');
+          return;
+        }
+        if (isNaN(markMax) || markMax <= 0 || markMax > 100) {
+          setFormValidationError('Max potential score must be between 1 and 100.');
+          return;
+        }
+        if (isNaN(markValue) || markValue < 0 || markValue > markMax) {
+          setFormValidationError(`Learner score must be between 0 and the max score of ${markMax} (within 0-100%).`);
+          return;
+        }
         await onAddMark(logStudentId, markSubject, markName, markValue, markMax);
       } else if (logType === 'attendance') {
+        if (attStatus !== 'Present' && attStatus !== 'Absent') {
+          setFormValidationError("Attendance status must be 'Present' or 'Absent'.");
+          return;
+        }
+        if (attReason.length > 200) {
+          setFormValidationError('Absence explanation must not exceed 200 characters.');
+          return;
+        }
         await onAddAttendance(logStudentId, attStatus, attReason);
       } else {
+        if (!behDesc.trim()) {
+          setFormValidationError('Behavior/incident description is required.');
+          return;
+        }
+        if (isNaN(behPoints) || behPoints < 1 || behPoints > 100) {
+          setFormValidationError('Modifier points must be between 1 and 100.');
+          return;
+        }
         // points negative if concern, positive if positive
         const finalPoints = behCategory === 'Concern' ? -Math.abs(behPoints) : Math.abs(behPoints);
         await onAddBehaviour(logStudentId, behCategory, behDesc, finalPoints);
       }
+
       setRecordLogSuccess(true);
+      setFormValidationError(null);
       setTimeout(() => setRecordLogSuccess(false), 3000);
       
       // clear fields
       setBehDesc('');
       setAttReason('');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setFormValidationError(err.message || 'Failed to submit diagnostic log.');
     }
   };
 
@@ -854,25 +895,26 @@ export default function AdminPortal({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Learner Score</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Learner Score (0 - {markMax})</label>
                   <input 
                     required
                     type="number" 
                     value={markValue} 
                     onChange={(e) => setMarkValue(Number(e.target.value))}
                     min={0}
-                    max={markMax}
+                    max={Math.min(100, markMax)}
                     className="w-full bg-[#050608] border border-white/10 text-slate-200 rounded-sm p-2 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Max Potential Score</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Max Potential Score (1 - 100)</label>
                   <input 
                     required
                     type="number" 
                     value={markMax} 
                     onChange={(e) => setMarkMax(Number(e.target.value))}
                     min={1}
+                    max={100}
                     className="w-full bg-[#050608] border border-white/10 text-slate-200 rounded-sm p-2 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono font-bold"
                   />
                 </div>
@@ -971,6 +1013,14 @@ export default function AdminPortal({
                     className="w-full bg-[#050608] border border-white/10 text-slate-200 rounded-sm p-2 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Validation Error Notice */}
+            {formValidationError && (
+              <div className="bg-red-500/10 border border-red-500/25 p-3 rounded-sm text-xs text-red-400 flex items-center gap-2 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{formValidationError}</span>
               </div>
             )}
 
